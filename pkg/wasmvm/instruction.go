@@ -10,6 +10,7 @@ func defaultInstructionMap() map[uint8]Instruction {
 	return map[uint8]Instruction{
 		0x00: NOP,
 		0x01: ADD8, // Example additional instruction
+		0x0B: END,  // End of function
 	}
 }
 
@@ -30,5 +31,13 @@ func ADD8(vm *VMState) error {
 	b := vm.Memory[vm.PC+2]
 	vm.Memory[vm.PC+3] = a + b
 	vm.PC += 4
+	return nil
+}
+
+func END(vm *VMState) error {
+	// Stub
+	// TODO: Add handling when there are entries on the call stack for the execution frame
+	vm.Trap = true
+	vm.TrapReason = "End of final function"
 	return nil
 }

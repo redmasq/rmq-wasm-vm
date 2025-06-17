@@ -27,6 +27,7 @@ func main() {
 	vm.Memory[2] = 2    // a = 2
 	vm.Memory[3] = 3    // b = 3
 	vm.Memory[4] = 0    // destination
+	vm.Memory[5] = 0x0B // END: Let's blow this popcicle stand
 	// Set PC to 0
 	vm.PC = 0
 	vm.MainLoop()
