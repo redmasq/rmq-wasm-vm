@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE book PUBLIC "-//OASIS//DTD DocBook XML V4.5//EN"
+  "http://www.oasis-open.org/docbook/xml/4.5/docbookx.dtd">
+
+<book>
+  <title>Software Requirements Specification for rmq-wasm-vm</title>
+  <subtitle>A Modular, Secure, Extensible WebAssembly Virtual Machine in Go</subtitle>
+  <author>
+    <personname>
+      <surname>redmasq</surname>
+    </personname>
+  </author>
+  <date>2025-06-17</date>
+
+  <chapter>
+    <title>Introduction</title>
+    <para>
+      <emphasis>rmq-wasm-vm</emphasis> is a standalone, embeddable, and extensible WebAssembly Virtual Machine (WASM VM) implemented in Go. It is designed for use as a core component in larger applications, but can also operate as a direct command-line utility. The VM emphasizes security, strong isolation, multi-context execution ("rings" and "threads"), and flexible memory/image initialization, with an API-driven architecture suitable for modern integration and automation scenarios.
+    </para>
+  </chapter>
+
+  <chapter>
+    <title>System Overview</title>
+    <section>
+      <title>Architecture</title>
+      <para>
+        The rmq-wasm-vm is structured around modular components communicating via Go interfaces and dependency injection. Key elements include: the state/configuration and execution structs, memory/image management, ring/thread execution model, syscall exposure, and standard handlers for I/O and host integration.
+      </para>
+    </section>
+    <section>
+      <title>Key Design Goals</title>
+      <itemizedlist>
+        <listitem>Compliance with the WASM 1.0 specification for binary execution and memory layout, with extensions for ring/thread isolation and custom syscalls.</listitem>
+        <listitem>Embeddability in Go programs (as a package), CLI operability for testing and direct execution, and suitability for integration into host systems as a "pure library."</listitem>
+        <listitem>Secure, pluggable, and easily extended through well-defined interfaces and hooks.</listitem>
+      </itemizedlist>
+    </section>
+  </chapter>
+
+  <chapter>
+    <title>Functional Requirements</title>
+    <section>
+      <title>Initialization and Configuration</title>
+      <para>
+        <itemizedlist>
+          <listitem>The VM must accept configuration via struct, supporting initialization with either a size in octets or a pre-existing memory region.</listitem>
+          <listitem>JSON-based configuration supported for populating the struct, including "image" property with modes: <emphasis>file</emphasis>, <emphasis>array</emphasis>, <emphasis>empty</emphasis>, <emphasis>sparsearray</emphasis>.</listitem>
+          <listitem>Image padding, overwrites, and strict mode support for initialization validation.</listitem>
+          <listitem>Support for standard and custom ring definitions (ring 0-255), with ring 0 being privileged and not user-redefinable.</listitem>
+          <listitem>Support for mapping standard in/out/err handlers, syscall exposure, and function map injection from host.</listitem>
+        </itemizedlist>
+      </para>
+    </section>
+    <section>
+      <title>Execution Model</title>
+      <para>
+        <itemizedlist>
+          <listitem>Execution proceeds via an "execute" method (stepwise single-instruction execution), or via a "main loop" method for continuous operation until abort or trap.</listitem>
+          <listitem>The VM maintains no global program counter; execution context is held per thread structure, each with its own stack and PC.</listitem>
+          <listitem>Thread structure fixed at initialization, supports one or more threads; only one thread in "legacy mode," multiple in "protected mode" (enables rings).</listitem>
+          <listitem>Ring-based isolation: threads may run in any ring, with security/enforcement rules for memory, syscalls, and traps.</listitem>
+          <listitem>Execution context stack includes: current ring, memory mapping, PC, call stack, object/variable stack, and metadata.</listitem>
+          <listitem>System call (syscall) and trap vector handling, with ring 0 providing trap interception and "first chance" or "second chance" logic.</listitem>
+        </itemizedlist>
+      </para>
+    </section>
+    <section>
+      <title>Memory and Image Management</title>
+      <para>
+        <itemizedlist>
+          <listitem>Memory region ("image") initialization via file, byte array, empty array (zeroed), or sparse array (with offset mapping).</listitem>
+          <listitem>Support for strict and non-strict initialization (warnings vs errors on overlaps or invalid size).</listitem>
+          <listitem>Enforcement of WASM memory model compliance; image size must match allowed WASM limits.</listitem>
+          <listitem>Support for read, write, and execute permissions per ring and memory span, with pluggable resolution functions (contiguous, windowed, custom).</listitem>
+        </itemizedlist>
+      </para>
+    </section>
+    <section>
+      <title>Instruction Execution</title>
+      <para>
+        <itemizedlist>
+          <listitem>Implements WASM instruction set, starting with NOP and core control flow, with extensible method for adding new opcodes.</listitem>
+          <listitem>Instruction handler mapping and unit test support per instruction (test suite to be provided in ./test/instructions/ directory).</listitem>
+          <listitem>Trap and halt handling: support for WASM `return` and `unreachable`, as well as VM-defined halt for controlled shutdown.</listitem>
+        </itemizedlist>
+      </para>
+    </section>
+    <section>
+      <title>Standard I/O and Host Integration</title>
+      <para>
+        <itemizedlist>
+          <listitem>Handlers for standard input, output, and error; configurable by host application via dependency injection.</listitem>
+          <listitem>Host-exposed function map for syscalls, host-provided APIs, and standard library extensions.</listitem>
+        </itemizedlist>
+      </para>
+    </section>
+    <section>
+      <title>Security and Isolation</title>
+      <para>
+        <itemizedlist>
+          <listitem>Ring model (0-255) with security enforcement for memory access, syscalls, and context switching.</listitem>
+          <listitem>Configurable privileges per ring, with memory regions and syscall access per ring context.</listitem>
+          <listitem>Threads and execution contexts may be trapped, halted, or aborted individually; thread 0 abort ends all execution.</listitem>
+        </itemizedlist>
+      </para>
+    </section>
+    <section>
+      <title>Extensibility and Testing</title>
+      <para>
+        <itemizedlist>
+          <listitem>All core subsystems (memory, execution, syscall, I/O) must be replaceable or extendable via Go interfaces or hooks.</listitem>
+          <listitem>Instruction handlers, ring models, memory mappers, and standard I/O must be pluggable/testable in isolation.</listitem>
+          <listitem>Test suite support for instructions and core subsystems.</listitem>
+        </itemizedlist>
+      </para>
+    </section>
+  </chapter>
+
+  <chapter>
+    <title>Non-Functional Requirements</title>
+    <para>
+      <itemizedlist>
+        <listitem>Performance: Must support efficient stepwise and batch execution with low overhead. Memory usage should be linear in image size, with no global allocations per instruction.</listitem>
+        <listitem>Portability: Must build and run on all Go-supported platforms; no platform-specific dependencies.</listitem>
+        <listitem>Security: Enforced ring/thread isolation, strict syscall/memory boundary controls, and host policy enforcement.</listitem>
+        <listitem>Extensibility: All core logic (especially syscalls, I/O, memory) must be modular and testable. Project must be open to external contribution via CLA and clear license.</listitem>
+        <listitem>Documentation: All public interfaces, configuration options, and extension points must be documented.</listitem>
+      </itemizedlist>
+    </para>
+  </chapter>
+
+  <chapter>
+    <title>Appendices</title>
+    <section>
+      <title>Glossary</title>
+      <para>
+        <itemizedlist>
+          <listitem><emphasis>WASM</emphasis>: WebAssembly, a stack-based VM bytecode specification for safe, fast, portable execution.</listitem>
+          <listitem><emphasis>Ring</emphasis>: A privilege/separation level for execution contexts, similar to CPU ring models.</listitem>
+          <listitem><emphasis>Thread</emphasis>: An independent execution context (including stack, PC, ring, and memory mapping) within the VM.</listitem>
+          <listitem><emphasis>Syscall</emphasis>: A function call from guest code into the host (or pseudokernel) for I/O, memory, or privileged operations.</listitem>
+          <listitem><emphasis>Image</emphasis>: The VM’s memory region, containing code and data, initialized at startup.</listitem>
+        </itemizedlist>
+      </para>
+    </section>
+  </chapter>
+</book>
