@@ -46,6 +46,10 @@ for tool in xsltproc dbtohtml docbook2html pandoc; do
     if command -v "$tool" >/dev/null 2>&1; then
         echo "Using $tool to convert DocBook to HTML..."
         convert_with_tool "$tool"
+        if command -v "tidy" >/dev/null 2>&1; then
+            mv "$OUTPUT_HTML" "$OUTPUT_HTML.bak"
+            tidy -i -q -wrap 0 -o "$OUTPUT_HTML" "$OUTPUT_HTML.bak"
+        fi
         echo "Conversion complete: $OUTPUT_HTML"
         exit 0
     fi

@@ -1,23 +1,386 @@
-<html><head><meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1"><title>Software Requirements Specification for rmq-wasm-vm</title><meta name="generator" content="DocBook XSL Stylesheets Vsnapshot"></head><body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF"><div class="book"><div class="titlepage"><div><div><h1 class="title"><a name="id1337"></a>Software Requirements Specification for rmq-wasm-vm</h1></div><div><h2 class="subtitle">A Modular, Secure, Extensible WebAssembly Virtual Machine in Go</h2></div></div><hr></div><div class="toc"><p><b>Table of Contents</b></p><dl class="toc"><dt><span class="chapter"><a href="#id1338">1. Introduction</a></span></dt><dt><span class="chapter"><a href="#id1341">2. System Overview</a></span></dt><dd><dl><dt><span class="section"><a href="#id1339">Architecture</a></span></dt><dt><span class="section"><a href="#id1340">Key Design Goals</a></span></dt></dl></dd><dt><span class="chapter"><a href="#id1349">3. Functional Requirements</a></span></dt><dd><dl><dt><span class="section"><a href="#id1342">Initialization and Configuration</a></span></dt><dt><span class="section"><a href="#id1343">Execution Model</a></span></dt><dt><span class="section"><a href="#id1344">Memory and Image Management</a></span></dt><dt><span class="section"><a href="#id1345">Instruction Execution</a></span></dt><dt><span class="section"><a href="#id1346">Standard I/O and Host Integration</a></span></dt><dt><span class="section"><a href="#id1347">Security and Isolation</a></span></dt><dt><span class="section"><a href="#id1348">Extensibility and Testing</a></span></dt></dl></dd><dt><span class="chapter"><a href="#id1350">4. Non-Functional Requirements</a></span></dt><dt><span class="chapter"><a href="#id1352">5. Appendices</a></span></dt><dd><dl><dt><span class="section"><a href="#id1351">Glossary</a></span></dt></dl></dd></dl></div><span class="author"><span class="surname">redmasq</span></span><span class="date">2025-06-17</span><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a name="id1338"></a>Chapter 1. Introduction</h1></div></div></div><p>
-      <span class="emphasis"><em>rmq-wasm-vm</em></span> is a standalone, embeddable, and extensible WebAssembly Virtual Machine (WASM VM) implemented in Go. It is designed for use as a core component in larger applications, but can also operate as a direct command-line utility. The VM emphasizes security, strong isolation, multi-context execution ("rings" and "threads"), and flexible memory/image initialization, with an API-driven architecture suitable for modern integration and automation scenarios.
-    </p></div><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a name="id1341"></a>Chapter 2. System Overview</h1></div></div></div><div class="toc"><p><b>Table of Contents</b></p><dl class="toc"><dt><span class="section"><a href="#id1339">Architecture</a></span></dt><dt><span class="section"><a href="#id1340">Key Design Goals</a></span></dt></dl></div><div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="id1339"></a>Architecture</h2></div></div></div><p>
-        The rmq-wasm-vm is structured around modular components communicating via Go interfaces and dependency injection. Key elements include: the state/configuration and execution structs, memory/image management, ring/thread execution model, syscall exposure, and standard handlers for I/O and host integration.
-      </p></div><div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="id1340"></a>Key Design Goals</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">Compliance with the WASM 1.0 specification for binary execution and memory layout, with extensions for ring/thread isolation and custom syscalls.</li><li class="listitem">Embeddability in Go programs (as a package), CLI operability for testing and direct execution, and suitability for integration into host systems as a "pure library."</li><li class="listitem">Secure, pluggable, and easily extended through well-defined interfaces and hooks.</li></ul></div></div></div><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a name="id1349"></a>Chapter 3. Functional Requirements</h1></div></div></div><div class="toc"><p><b>Table of Contents</b></p><dl class="toc"><dt><span class="section"><a href="#id1342">Initialization and Configuration</a></span></dt><dt><span class="section"><a href="#id1343">Execution Model</a></span></dt><dt><span class="section"><a href="#id1344">Memory and Image Management</a></span></dt><dt><span class="section"><a href="#id1345">Instruction Execution</a></span></dt><dt><span class="section"><a href="#id1346">Standard I/O and Host Integration</a></span></dt><dt><span class="section"><a href="#id1347">Security and Isolation</a></span></dt><dt><span class="section"><a href="#id1348">Extensibility and Testing</a></span></dt></dl></div><div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="id1342"></a>Initialization and Configuration</h2></div></div></div><p>
-        </p><div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">The VM must accept configuration via struct, supporting initialization with either a size in octets or a pre-existing memory region.</li><li class="listitem">JSON-based configuration supported for populating the struct, including "image" property with modes: <span class="emphasis"><em>file</em></span>, <span class="emphasis"><em>array</em></span>, <span class="emphasis"><em>empty</em></span>, <span class="emphasis"><em>sparsearray</em></span>.</li><li class="listitem">Image padding, overwrites, and strict mode support for initialization validation.</li><li class="listitem">Support for standard and custom ring definitions (ring 0-255), with ring 0 being privileged and not user-redefinable.</li><li class="listitem">Support for mapping standard in/out/err handlers, syscall exposure, and function map injection from host.</li></ul></div><p>
-      </p></div><div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="id1343"></a>Execution Model</h2></div></div></div><p>
-        </p><div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">Execution proceeds via an "execute" method (stepwise single-instruction execution), or via a "main loop" method for continuous operation until abort or trap.</li><li class="listitem">The VM maintains no global program counter; execution context is held per thread structure, each with its own stack and PC.</li><li class="listitem">Thread structure fixed at initialization, supports one or more threads; only one thread in "legacy mode," multiple in "protected mode" (enables rings).</li><li class="listitem">Ring-based isolation: threads may run in any ring, with security/enforcement rules for memory, syscalls, and traps.</li><li class="listitem">Execution context stack includes: current ring, memory mapping, PC, call stack, object/variable stack, and metadata.</li><li class="listitem">System call (syscall) and trap vector handling, with ring 0 providing trap interception and "first chance" or "second chance" logic.</li></ul></div><p>
-      </p></div><div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="id1344"></a>Memory and Image Management</h2></div></div></div><p>
-        </p><div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">Memory region ("image") initialization via file, byte array, empty array (zeroed), or sparse array (with offset mapping).</li><li class="listitem">Support for strict and non-strict initialization (warnings vs errors on overlaps or invalid size).</li><li class="listitem">Enforcement of WASM memory model compliance; image size must match allowed WASM limits.</li><li class="listitem">Support for read, write, and execute permissions per ring and memory span, with pluggable resolution functions (contiguous, windowed, custom).</li></ul></div><p>
-      </p></div><div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="id1345"></a>Instruction Execution</h2></div></div></div><p>
-        </p><div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">Implements WASM instruction set, starting with NOP and core control flow, with extensible method for adding new opcodes.</li><li class="listitem">Instruction handler mapping and unit test support per instruction (test suite to be provided in ./test/instructions/ directory).</li><li class="listitem">Trap and halt handling: support for WASM `return` and `unreachable`, as well as VM-defined halt for controlled shutdown.</li></ul></div><p>
-      </p></div><div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="id1346"></a>Standard I/O and Host Integration</h2></div></div></div><p>
-        </p><div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">Handlers for standard input, output, and error; configurable by host application via dependency injection.</li><li class="listitem">Host-exposed function map for syscalls, host-provided APIs, and standard library extensions.</li></ul></div><p>
-      </p></div><div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="id1347"></a>Security and Isolation</h2></div></div></div><p>
-        </p><div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">Ring model (0-255) with security enforcement for memory access, syscalls, and context switching.</li><li class="listitem">Configurable privileges per ring, with memory regions and syscall access per ring context.</li><li class="listitem">Threads and execution contexts may be trapped, halted, or aborted individually; thread 0 abort ends all execution.</li></ul></div><p>
-      </p></div><div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="id1348"></a>Extensibility and Testing</h2></div></div></div><p>
-        </p><div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">All core subsystems (memory, execution, syscall, I/O) must be replaceable or extendable via Go interfaces or hooks.</li><li class="listitem">Instruction handlers, ring models, memory mappers, and standard I/O must be pluggable/testable in isolation.</li><li class="listitem">Test suite support for instructions and core subsystems.</li></ul></div><p>
-      </p></div></div><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a name="id1350"></a>Chapter 4. Non-Functional Requirements</h1></div></div></div><p>
-      </p><div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem">Performance: Must support efficient stepwise and batch execution with low overhead. Memory usage should be linear in image size, with no global allocations per instruction.</li><li class="listitem">Portability: Must build and run on all Go-supported platforms; no platform-specific dependencies.</li><li class="listitem">Security: Enforced ring/thread isolation, strict syscall/memory boundary controls, and host policy enforcement.</li><li class="listitem">Extensibility: All core logic (especially syscalls, I/O, memory) must be modular and testable. Project must be open to external contribution via CLA and clear license.</li><li class="listitem">Documentation: All public interfaces, configuration options, and extension points must be documented.</li></ul></div><p>
-    </p></div><div class="chapter"><div class="titlepage"><div><div><h1 class="title"><a name="id1352"></a>Chapter 5. Appendices</h1></div></div></div><div class="toc"><p><b>Table of Contents</b></p><dl class="toc"><dt><span class="section"><a href="#id1351">Glossary</a></span></dt></dl></div><div class="section"><div class="titlepage"><div><div><h2 class="title" style="clear: both"><a name="id1351"></a>Glossary</h2></div></div></div><p>
-        </p><div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; "><li class="listitem"><span class="emphasis"><em>WASM</em></span>: WebAssembly, a stack-based VM bytecode specification for safe, fast, portable execution.</li><li class="listitem"><span class="emphasis"><em>Ring</em></span>: A privilege/separation level for execution contexts, similar to CPU ring models.</li><li class="listitem"><span class="emphasis"><em>Thread</em></span>: An independent execution context (including stack, PC, ring, and memory mapping) within the VM.</li><li class="listitem"><span class="emphasis"><em>Syscall</em></span>: A function call from guest code into the host (or pseudokernel) for I/O, memory, or privileged operations.</li><li class="listitem"><span class="emphasis"><em>Image</em></span>: The VM&#8217;s memory region, containing code and data, initialized at startup.</li></ul></div><p>
-      </p></div></div></div></body></html>
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html>
+<head>
+  <meta name="generator" content="HTML Tidy for Mac OS X (vers 31 October 2006 - Apple Inc. build 9576), see www.w3.org">
+  <meta http-equiv="Content-Type" content="text/html; charset=us-ascii">
+
+  <title>Software Requirements Specification for rmq-wasm-vm</title>
+  <meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+</head>
+
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+  <div class="book">
+    <div class="titlepage">
+      <div>
+        <div>
+          <h1 class="title"><a name="id1337" id="id1337"></a>Software Requirements Specification for rmq-wasm-vm</h1>
+        </div>
+
+        <div>
+          <h2 class="subtitle">A Modular, Secure, Extensible WebAssembly Virtual Machine in Go</h2>
+        </div>
+      </div>
+      <hr>
+    </div>
+
+    <div class="toc">
+      <p><b>Table of Contents</b></p>
+
+      <dl class="toc">
+        <dt><span class="chapter"><a href="#id1338">1. Introduction</a></span></dt>
+
+        <dt><span class="chapter"><a href="#id1341">2. System Overview</a></span></dt>
+
+        <dd>
+          <dl>
+            <dt><span class="section"><a href="#id1339">Architecture</a></span></dt>
+
+            <dt><span class="section"><a href="#id1340">Key Design Goals</a></span></dt>
+          </dl>
+        </dd>
+
+        <dt><span class="chapter"><a href="#id1349">3. Functional Requirements</a></span></dt>
+
+        <dd>
+          <dl>
+            <dt><span class="section"><a href="#id1342">Initialization and Configuration</a></span></dt>
+
+            <dt><span class="section"><a href="#id1343">Execution Model</a></span></dt>
+
+            <dt><span class="section"><a href="#id1344">Memory and Image Management</a></span></dt>
+
+            <dt><span class="section"><a href="#id1345">Instruction Execution</a></span></dt>
+
+            <dt><span class="section"><a href="#id1346">Standard I/O and Host Integration</a></span></dt>
+
+            <dt><span class="section"><a href="#id1347">Security and Isolation</a></span></dt>
+
+            <dt><span class="section"><a href="#id1348">Extensibility and Testing</a></span></dt>
+          </dl>
+        </dd>
+
+        <dt><span class="chapter"><a href="#id1350">4. Non-Functional Requirements</a></span></dt>
+
+        <dt><span class="chapter"><a href="#id1352">5. Appendices</a></span></dt>
+
+        <dd>
+          <dl>
+            <dt><span class="section"><a href="#id1351">Glossary</a></span></dt>
+          </dl>
+        </dd>
+      </dl>
+    </div><span class="author"><span class="surname">redmasq</span></span><span class="date">2025-06-17</span>
+
+    <div class="chapter">
+      <div class="titlepage">
+        <div>
+          <div>
+            <h1 class="title"><a name="id1338" id="id1338"></a>Chapter&nbsp;1.&nbsp;Introduction</h1>
+          </div>
+        </div>
+      </div>
+
+      <p><span class="emphasis"><em>rmq-wasm-vm</em></span> is a standalone, embeddable, and extensible WebAssembly Virtual Machine (WASM VM) implemented in Go. It is designed for use as a core component in larger applications, but can also operate as a direct command-line utility. The VM emphasizes security, strong isolation, multi-context execution ("rings" and "threads"), and flexible memory/image initialization, with an API-driven architecture suitable for modern integration and automation scenarios.</p>
+    </div>
+
+    <div class="chapter">
+      <div class="titlepage">
+        <div>
+          <div>
+            <h1 class="title"><a name="id1341" id="id1341"></a>Chapter&nbsp;2.&nbsp;System Overview</h1>
+          </div>
+        </div>
+      </div>
+
+      <div class="toc">
+        <p><b>Table of Contents</b></p>
+
+        <dl class="toc">
+          <dt><span class="section"><a href="#id1339">Architecture</a></span></dt>
+
+          <dt><span class="section"><a href="#id1340">Key Design Goals</a></span></dt>
+        </dl>
+      </div>
+
+      <div class="section">
+        <div class="titlepage">
+          <div>
+            <div>
+              <h2 class="title" style="clear: both"><a name="id1339" id="id1339"></a>Architecture</h2>
+            </div>
+          </div>
+        </div>
+
+        <p>The rmq-wasm-vm is structured around modular components communicating via Go interfaces and dependency injection. Key elements include: the state/configuration and execution structs, memory/image management, ring/thread execution model, syscall exposure, and standard handlers for I/O and host integration.</p>
+      </div>
+
+      <div class="section">
+        <div class="titlepage">
+          <div>
+            <div>
+              <h2 class="title" style="clear: both"><a name="id1340" id="id1340"></a>Key Design Goals</h2>
+            </div>
+          </div>
+        </div>
+
+        <div class="itemizedlist">
+          <ul class="itemizedlist" style="list-style-type: disc;">
+            <li class="listitem">Compliance with the WASM 1.0 specification for binary execution and memory layout, with extensions for ring/thread isolation and custom syscalls.</li>
+
+            <li class="listitem">Embeddability in Go programs (as a package), CLI operability for testing and direct execution, and suitability for integration into host systems as a "pure library."</li>
+
+            <li class="listitem">Secure, pluggable, and easily extended through well-defined interfaces and hooks.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="chapter">
+      <div class="titlepage">
+        <div>
+          <div>
+            <h1 class="title"><a name="id1349" id="id1349"></a>Chapter&nbsp;3.&nbsp;Functional Requirements</h1>
+          </div>
+        </div>
+      </div>
+
+      <div class="toc">
+        <p><b>Table of Contents</b></p>
+
+        <dl class="toc">
+          <dt><span class="section"><a href="#id1342">Initialization and Configuration</a></span></dt>
+
+          <dt><span class="section"><a href="#id1343">Execution Model</a></span></dt>
+
+          <dt><span class="section"><a href="#id1344">Memory and Image Management</a></span></dt>
+
+          <dt><span class="section"><a href="#id1345">Instruction Execution</a></span></dt>
+
+          <dt><span class="section"><a href="#id1346">Standard I/O and Host Integration</a></span></dt>
+
+          <dt><span class="section"><a href="#id1347">Security and Isolation</a></span></dt>
+
+          <dt><span class="section"><a href="#id1348">Extensibility and Testing</a></span></dt>
+        </dl>
+      </div>
+
+      <div class="section">
+        <div class="titlepage">
+          <div>
+            <div>
+              <h2 class="title" style="clear: both"><a name="id1342" id="id1342"></a>Initialization and Configuration</h2>
+            </div>
+          </div>
+        </div>
+
+        <div class="itemizedlist">
+          <ul class="itemizedlist" style="list-style-type: disc;">
+            <li class="listitem">The VM must accept configuration via struct, supporting initialization with either a size in octets or a pre-existing memory region.</li>
+
+            <li class="listitem">JSON-based configuration supported for populating the struct, including "image" property with modes: <span class="emphasis"><em>file</em></span>, <span class="emphasis"><em>array</em></span>, <span class="emphasis"><em>empty</em></span>, <span class="emphasis"><em>sparsearray</em></span>.</li>
+
+            <li class="listitem">Image padding, overwrites, and strict mode support for initialization validation.</li>
+
+            <li class="listitem">Support for standard and custom ring definitions (ring 0-255), with ring 0 being privileged and not user-redefinable.</li>
+
+            <li class="listitem">Support for mapping standard in/out/err handlers, syscall exposure, and function map injection from host.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="titlepage">
+          <div>
+            <div>
+              <h2 class="title" style="clear: both"><a name="id1343" id="id1343"></a>Execution Model</h2>
+            </div>
+          </div>
+        </div>
+
+        <div class="itemizedlist">
+          <ul class="itemizedlist" style="list-style-type: disc;">
+            <li class="listitem">Execution proceeds via an "execute" method (stepwise single-instruction execution), or via a "main loop" method for continuous operation until abort or trap.</li>
+
+            <li class="listitem">The VM maintains no global program counter; execution context is held per thread structure, each with its own stack and PC.</li>
+
+            <li class="listitem">Thread structure fixed at initialization, supports one or more threads; only one thread in "legacy mode," multiple in "protected mode" (enables rings).</li>
+
+            <li class="listitem">Ring-based isolation: threads may run in any ring, with security/enforcement rules for memory, syscalls, and traps.</li>
+
+            <li class="listitem">Execution context stack includes: current ring, memory mapping, PC, call stack, object/variable stack, and metadata.</li>
+
+            <li class="listitem">System call (syscall) and trap vector handling, with ring 0 providing trap interception and "first chance" or "second chance" logic.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="titlepage">
+          <div>
+            <div>
+              <h2 class="title" style="clear: both"><a name="id1344" id="id1344"></a>Memory and Image Management</h2>
+            </div>
+          </div>
+        </div>
+
+        <div class="itemizedlist">
+          <ul class="itemizedlist" style="list-style-type: disc;">
+            <li class="listitem">Memory region ("image") initialization via file, byte array, empty array (zeroed), or sparse array (with offset mapping).</li>
+
+            <li class="listitem">Support for strict and non-strict initialization (warnings vs errors on overlaps or invalid size).</li>
+
+            <li class="listitem">Enforcement of WASM memory model compliance; image size must match allowed WASM limits.</li>
+
+            <li class="listitem">Support for read, write, and execute permissions per ring and memory span, with pluggable resolution functions (contiguous, windowed, custom).</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="titlepage">
+          <div>
+            <div>
+              <h2 class="title" style="clear: both"><a name="id1345" id="id1345"></a>Instruction Execution</h2>
+            </div>
+          </div>
+        </div>
+
+        <div class="itemizedlist">
+          <ul class="itemizedlist" style="list-style-type: disc;">
+            <li class="listitem">Implements WASM instruction set, starting with NOP and core control flow, with extensible method for adding new opcodes.</li>
+
+            <li class="listitem">Instruction handler mapping and unit test support per instruction (test suite to be provided in ./test/instructions/ directory).</li>
+
+            <li class="listitem">Trap and halt handling: support for WASM `return` and `unreachable`, as well as VM-defined halt for controlled shutdown.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="titlepage">
+          <div>
+            <div>
+              <h2 class="title" style="clear: both"><a name="id1346" id="id1346"></a>Standard I/O and Host Integration</h2>
+            </div>
+          </div>
+        </div>
+
+        <div class="itemizedlist">
+          <ul class="itemizedlist" style="list-style-type: disc;">
+            <li class="listitem">Handlers for standard input, output, and error; configurable by host application via dependency injection.</li>
+
+            <li class="listitem">Host-exposed function map for syscalls, host-provided APIs, and standard library extensions.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="titlepage">
+          <div>
+            <div>
+              <h2 class="title" style="clear: both"><a name="id1347" id="id1347"></a>Security and Isolation</h2>
+            </div>
+          </div>
+        </div>
+
+        <div class="itemizedlist">
+          <ul class="itemizedlist" style="list-style-type: disc;">
+            <li class="listitem">Ring model (0-255) with security enforcement for memory access, syscalls, and context switching.</li>
+
+            <li class="listitem">Configurable privileges per ring, with memory regions and syscall access per ring context.</li>
+
+            <li class="listitem">Threads and execution contexts may be trapped, halted, or aborted individually; thread 0 abort ends all execution.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="titlepage">
+          <div>
+            <div>
+              <h2 class="title" style="clear: both"><a name="id1348" id="id1348"></a>Extensibility and Testing</h2>
+            </div>
+          </div>
+        </div>
+
+        <div class="itemizedlist">
+          <ul class="itemizedlist" style="list-style-type: disc;">
+            <li class="listitem">All core subsystems (memory, execution, syscall, I/O) must be replaceable or extendable via Go interfaces or hooks.</li>
+
+            <li class="listitem">Instruction handlers, ring models, memory mappers, and standard I/O must be pluggable/testable in isolation.</li>
+
+            <li class="listitem">Test suite support for instructions and core subsystems.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="chapter">
+      <div class="titlepage">
+        <div>
+          <div>
+            <h1 class="title"><a name="id1350" id="id1350"></a>Chapter&nbsp;4.&nbsp;Non-Functional Requirements</h1>
+          </div>
+        </div>
+      </div>
+
+      <div class="itemizedlist">
+        <ul class="itemizedlist" style="list-style-type: disc;">
+          <li class="listitem">Performance: Must support efficient stepwise and batch execution with low overhead. Memory usage should be linear in image size, with no global allocations per instruction.</li>
+
+          <li class="listitem">Portability: Must build and run on all Go-supported platforms; no platform-specific dependencies.</li>
+
+          <li class="listitem">Security: Enforced ring/thread isolation, strict syscall/memory boundary controls, and host policy enforcement.</li>
+
+          <li class="listitem">Extensibility: All core logic (especially syscalls, I/O, memory) must be modular and testable. Project must be open to external contribution via CLA and clear license.</li>
+
+          <li class="listitem">Documentation: All public interfaces, configuration options, and extension points must be documented.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="chapter">
+      <div class="titlepage">
+        <div>
+          <div>
+            <h1 class="title"><a name="id1352" id="id1352"></a>Chapter&nbsp;5.&nbsp;Appendices</h1>
+          </div>
+        </div>
+      </div>
+
+      <div class="toc">
+        <p><b>Table of Contents</b></p>
+
+        <dl class="toc">
+          <dt><span class="section"><a href="#id1351">Glossary</a></span></dt>
+        </dl>
+      </div>
+
+      <div class="section">
+        <div class="titlepage">
+          <div>
+            <div>
+              <h2 class="title" style="clear: both"><a name="id1351" id="id1351"></a>Glossary</h2>
+            </div>
+          </div>
+        </div>
+
+        <div class="itemizedlist">
+          <ul class="itemizedlist" style="list-style-type: disc;">
+            <li class="listitem"><span class="emphasis"><em>WASM</em></span>: WebAssembly, a stack-based VM bytecode specification for safe, fast, portable execution.</li>
+
+            <li class="listitem"><span class="emphasis"><em>Ring</em></span>: A privilege/separation level for execution contexts, similar to CPU ring models.</li>
+
+            <li class="listitem"><span class="emphasis"><em>Thread</em></span>: An independent execution context (including stack, PC, ring, and memory mapping) within the VM.</li>
+
+            <li class="listitem"><span class="emphasis"><em>Syscall</em></span>: A function call from guest code into the host (or pseudokernel) for I/O, memory, or privileged operations.</li>
+
+            <li class="listitem"><span class="emphasis"><em>Image</em></span>: The VM&rsquo;s memory region, containing code and data, initialized at startup.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
