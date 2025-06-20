@@ -10,7 +10,7 @@ import (
 func main() {
 	// Demo: minimal config, empty memory, runs NOP then ADD8
 	cfg := &wasmvm.VMConfig{
-		Size:   8,
+		Size:   13,
 		Rings:  map[uint8]wasmvm.RingConfig{},
 		Stdin:  os.Stdin,
 		Stdout: os.Stdout,
@@ -22,14 +22,22 @@ func main() {
 		os.Exit(1)
 	}
 	// Preload some instructions for testing
-	vm.Memory[0] = 0x00 // NOP
-	vm.Memory[1] = 0x01 // ADD8
-	vm.Memory[2] = 2    // a = 2
-	vm.Memory[3] = 3    // b = 3
-	vm.Memory[4] = 0    // destination
-	vm.Memory[5] = 0x0B // END: Let's blow this popcicle stand
+	vm.Memory[0] = 0x01 // NOP
+	vm.Memory[1] = 0x43 // const.i32
+	vm.Memory[2] = 2    // Little Endian a
+	vm.Memory[3] = 0    //
+	vm.Memory[4] = 0    //
+	vm.Memory[5] = 0
+	vm.Memory[6] = 0x43 // const.i32
+	vm.Memory[7] = 3    // Little Endian b
+	vm.Memory[8] = 0
+	vm.Memory[9] = 0
+	vm.Memory[10] = 0
+	vm.Memory[11] = 0x6A // add.i32
+	vm.Memory[12] = 0x0B // END: Let's blow this popcicle stand
 	// Set PC to 0
 	vm.PC = 0
 	vm.MainLoop()
 	fmt.Printf("Memory after execution: %+v\n", vm.Memory)
+	fmt.Printf("Stack after execution: %#v\n", vm.ValueStack)
 }
