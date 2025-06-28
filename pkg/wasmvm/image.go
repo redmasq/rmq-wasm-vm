@@ -7,6 +7,8 @@ import (
 	"os"
 )
 
+var ReadFile = os.ReadFile
+
 type ImageConfig struct {
 	Type     string             `json:"type"`
 	Filename string             `json:"filename,omitempty"`
@@ -25,7 +27,7 @@ func PopulateImage(mem []byte, cfg *ImageConfig, strict bool) ([]string, error) 
 	warns := []string{}
 	switch cfg.Type {
 	case "file":
-		data, err := os.ReadFile(cfg.Filename)
+		data, err := ReadFile(cfg.Filename)
 		if err != nil {
 			return warns, err
 		}
