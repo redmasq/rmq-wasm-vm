@@ -1,4 +1,4 @@
-package instructions
+package wasmvm_test
 
 import (
 	"testing"
