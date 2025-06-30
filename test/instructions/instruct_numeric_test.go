@@ -19,7 +19,7 @@ func TestCONST_I32(t *testing.T) {
 	vm.Memory[3] = 0x34
 	vm.Memory[4] = 0x12
 	vm.PC = 0
-	err = vm.ExecuteNext()
+	err = vm.Step()
 	assert.NoError(t, err)
 	val, success := vm.ValueStack.Pop()
 	assert.True(t, success)
@@ -39,7 +39,7 @@ func TestADD_I32_SmallNumbers(t *testing.T) {
 	vm.ValueStack.PushInt32(7)
 	vm.Memory[0] = 0x6A
 	vm.PC = 0
-	err = vm.ExecuteNext()
+	err = vm.Step()
 	assert.NoError(t, err)
 	val, success := vm.ValueStack.Pop()
 	assert.True(t, success)

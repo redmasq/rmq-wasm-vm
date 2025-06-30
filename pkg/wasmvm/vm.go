@@ -6,11 +6,16 @@ import (
 	"io"
 )
 
+// TODO: Stub for when ring support comes much later
 type RingConfig struct {
 	Enabled bool
 	// Add additional properties later
 }
 
+// This contains the basic structure of the initialization
+// with the ability to define various parameters. Some of
+// them are meant to be unchanged once execution starts,
+// thus we have a different struct
 type VMConfig struct {
 	Size          uint64 // Memory size in bytes
 	FlatMemory    []byte // Optional: existing memory
@@ -24,14 +29,25 @@ type VMConfig struct {
 	StartOverride *uint64 // Optional entry point override
 }
 
+// This will eventually provide a function pointer for
+// functions exposed to anything running in the VM
 type ExposedFunc struct {
 	Parameters map[string]interface{} // Metadata for the function
 	Function   func(*VMState, ...interface{}) error
 }
 
+// Number of octets in types so far
+// As a side note, I'm working with uint values
+// unless otherwise specified
 const WIDTH_I32 = 4
 const WIDTH_F32 = 4
 
+// The actual VM state itself. Right now, we are only assuming a
+// single execution context. I'll need to refactor this when
+// rings get added, which is the prereq to my threading model
+// since I'm ignoring the "mark memory as shared" proposed
+// standard for which I stumbled upon for something I think
+// will allow for easier porting
 type VMState struct {
 	Memory         []byte
 	PC             uint64 // Program Counter
@@ -46,6 +62,7 @@ type VMState struct {
 	// Add more state as needed
 }
 
+// NewVM - Accepts VMConfig and returns a constructed VMConfig or error
 func NewVM(config *VMConfig) (*VMState, error) {
 	if config.Size == 0 && config.FlatMemory == nil {
 		return nil, errors.New("either Size or FlatMemory must be specified")
@@ -93,7 +110,9 @@ func NewVM(config *VMConfig) (*VMState, error) {
 	return state, nil
 }
 
-func (vm *VMState) ExecuteNext() error {
+// Operates on a VMState - This fetches the next instruction and acts upon
+// it using the configured InstructionMap. May return an error.
+func (vm *VMState) Step() error {
 	if vm.Trap {
 		return fmt.Errorf("execution trapped: %s", vm.TrapReason)
 	}
@@ -112,9 +131,10 @@ func (vm *VMState) ExecuteNext() error {
 	return handler(vm)
 }
 
+// Operates on VMState - Calls vm.Step() until trap is reached
 func (vm *VMState) MainLoop() {
 	for !vm.Trap {
-		err := vm.ExecuteNext()
+		err := vm.Step()
 		if err != nil && vm.Config != nil && vm.Config.Stderr != nil {
 			fmt.Fprintf(vm.Config.Stderr, "Execution error: %v\n", err)
 		}

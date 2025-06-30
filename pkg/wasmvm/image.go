@@ -7,6 +7,7 @@ import (
 	"os"
 )
 
+// Defined so as to allow for mocking
 var ReadFile = os.ReadFile
 
 type ImageConfig struct {
@@ -35,6 +36,18 @@ func PopulateImage(mem []byte, cfg *ImageConfig, strict bool) ([]string, error) 
 	case "array":
 		if cfg.Size == 0 {
 			return warns, errors.New("array type requires size")
+		}
+		if cfg.Size > uint64(len(mem)) {
+			if strict {
+				return warns, fmt.Errorf("array size larger than memory")
+			}
+			warns = append(warns, "array size larger than memory")
+		}
+		if cfg.Size < uint64(len(cfg.Array)) {
+			if strict {
+				return warns, fmt.Errorf("array entry larger than size")
+			}
+			warns = append(warns, "array entry larger than size")
 		}
 		copy(mem, cfg.Array)
 		for i := uint64(len(cfg.Array)); i < cfg.Size && i < uint64(len(mem)); i++ {
