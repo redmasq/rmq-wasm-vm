@@ -1,6 +1,7 @@
 package wasmvm_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/redmasq/rmq-wasm-vm/pkg/wasmvm"
@@ -25,6 +26,50 @@ func TestPopulateImage_FileType(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Empty(t, warns)
 	assert.Equal(t, []byte{0xAB, 0xCD, 0, 0}, mem)
+}
+
+func TestPopulateImage_FileType_ReadError(t *testing.T) {
+	// Mock ReadFile
+	original := wasmvm.ReadFile
+	defer func() { wasmvm.ReadFile = original }()
+	wasmvm.ReadFile = func(string) ([]byte, error) {
+		return nil, errors.New("I/O Error because \"reasons\"")
+	}
+
+	mem := make([]byte, 4)
+	cfg := &wasmvm.ImageConfig{
+		Type:     "file",
+		Filename: "fake.file",
+	}
+	warns, err := wasmvm.PopulateImage(mem, cfg, false)
+	assert.Error(t, err)
+	assert.Empty(t, warns)
+	assert.Contains(t, err.Error(), "I/O Error because \"reasons\"")
+}
+
+func TestPopulateImage_FileType_SizeMismatch(t *testing.T) {
+	// Mock ReadFile
+	original := wasmvm.ReadFile
+	defer func() { wasmvm.ReadFile = original }()
+	wasmvm.ReadFile = func(string) ([]byte, error) {
+		return []byte{0xAB, 0xCD, 0x01, 0x02}, nil
+	}
+
+	mem := make([]byte, 3)
+	cfg := &wasmvm.ImageConfig{
+		Type:     "file",
+		Filename: "fake.file",
+	}
+
+	warns, err := wasmvm.PopulateImage(mem, cfg, true)
+	assert.Error(t, err)
+	assert.Empty(t, warns)
+	assert.Contains(t, err.Error(), "file entry image is larger than memory file:4 vs mem:3")
+
+	warns, err = wasmvm.PopulateImage(mem, cfg, false)
+	assert.NoError(t, err)
+	assert.Contains(t, warns[0], "file entry image is larger than memory file:4 vs mem:3")
+
 }
 
 func TestPopulateImage_ArrayType(t *testing.T) {
@@ -55,6 +100,34 @@ func TestPopulateImage_ArrayType_OOB(t *testing.T) {
 	assert.Contains(t, warns[0], "array entry larger than size")
 }
 
+func TestPopulateImage_ArrayType_SizeMismatch(t *testing.T) {
+	mem := make([]byte, 4)
+	cfg := &wasmvm.ImageConfig{
+		Type:  "array",
+		Size:  6,
+		Array: []uint8{1, 2},
+	}
+	_, err := wasmvm.PopulateImage(mem, cfg, true)
+	assert.Error(t, err)
+
+	warns, err := wasmvm.PopulateImage(mem, cfg, false)
+	assert.NoError(t, err)
+	assert.Contains(t, warns[0], "array size larger than memory")
+}
+
+func TestPopulateImage_ArrayType_SizeZero(t *testing.T) {
+	mem := make([]byte, 4)
+	cfg := &wasmvm.ImageConfig{
+		Type:  "array",
+		Size:  0,
+		Array: []uint8{1, 2},
+	}
+
+	_, err := wasmvm.PopulateImage(mem, cfg, false)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "array type requires size")
+}
+
 func TestPopulateImage_EmptyType(t *testing.T) {
 	mem := []byte{99, 88, 77}
 	cfg := &wasmvm.ImageConfig{
@@ -65,6 +138,18 @@ func TestPopulateImage_EmptyType(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Empty(t, warns)
 	assert.Equal(t, []byte{0, 0, 0}, mem)
+}
+
+func TestPopulateImage_EmptyType_SizeZero(t *testing.T) {
+	mem := make([]byte, 4)
+	cfg := &wasmvm.ImageConfig{
+		Type: "empty",
+		Size: 0,
+	}
+
+	_, err := wasmvm.PopulateImage(mem, cfg, false)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "empty type requires size")
 }
 
 func TestPopulateImage_SparseArrayType_Normal(t *testing.T) {
@@ -143,4 +228,11 @@ func TestParseImageConfig_JSON(t *testing.T) {
 	assert.Equal(t, "array", cfg.Type)
 	assert.Equal(t, []uint8{1, 2, 3}, cfg.Array)
 	assert.Equal(t, uint64(4), cfg.Size)
+}
+
+func TestParseImageConfig_JSON_BogusInput(t *testing.T) {
+	raw := []byte(`<image><type>array</type><array><item>1</item><item>2</item><item>3</item><size>4</size></image>`) // I know it could have been just jibberish, but why not?
+	cfg, err := wasmvm.ParseImageConfig(raw)
+	require.Error(t, err)
+	require.Nil(t, cfg)
 }

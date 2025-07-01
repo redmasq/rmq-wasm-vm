@@ -32,6 +32,12 @@ func PopulateImage(mem []byte, cfg *ImageConfig, strict bool) ([]string, error) 
 		if err != nil {
 			return warns, err
 		}
+		if len(data) > len(mem) {
+			if strict {
+				return warns, fmt.Errorf("file entry image is larger than memory file:%d vs mem:%d", len(data), len(mem))
+			}
+			warns = append(warns, fmt.Sprintf("file entry image is larger than memory file:%d vs mem:%d", len(data), len(mem)))
+		}
 		copy(mem, data)
 	case "array":
 		if cfg.Size == 0 {
@@ -39,7 +45,7 @@ func PopulateImage(mem []byte, cfg *ImageConfig, strict bool) ([]string, error) 
 		}
 		if cfg.Size > uint64(len(mem)) {
 			if strict {
-				return warns, fmt.Errorf("array size larger than memory")
+				return warns, errors.New("array size larger than memory")
 			}
 			warns = append(warns, "array size larger than memory")
 		}

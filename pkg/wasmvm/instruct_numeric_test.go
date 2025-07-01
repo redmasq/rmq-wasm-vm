@@ -28,6 +28,40 @@ func TestCONST_I32(t *testing.T) {
 
 }
 
+func TestCONST_I32_OOB(t *testing.T) {
+	cfg := &wasmvm.VMConfig{
+		Size: 4,
+	}
+	vm, err := wasmvm.NewVM(cfg)
+	assert.NoError(t, err)
+	vm.Memory[0] = 0x43
+	vm.Memory[1] = 0x78
+	vm.Memory[2] = 0x56
+	vm.PC = 0
+	err = vm.Step()
+	assert.Error(t, err)
+	assert.Equal(t, int(0), vm.ValueStack.Size())
+	assert.True(t, vm.Trap)
+	assert.Equal(t, "CONST_I32: Out of bounds", vm.TrapReason)
+
+}
+
+func TestADD_I32_NotEnoughStack(t *testing.T) {
+	cfg := &wasmvm.VMConfig{
+		Size: 1,
+	}
+	vm, err := wasmvm.NewVM(cfg)
+	assert.NoError(t, err)
+	// opcode
+	vm.Memory[0] = 0x6A
+	vm.PC = 0
+	err = vm.Step()
+	assert.Error(t, err)
+	assert.Equal(t, int(0), vm.ValueStack.Size())
+	assert.True(t, vm.Trap)
+	assert.Equal(t, "ADD_I32: Stack Underflow", vm.TrapReason)
+}
+
 func TestADD_I32_SmallNumbers(t *testing.T) {
 	cfg := &wasmvm.VMConfig{
 		Size: 1,

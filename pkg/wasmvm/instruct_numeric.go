@@ -31,6 +31,9 @@ func ADD_I32(vm *VMState) error {
 		return errors.New(vm.TrapReason)
 	}
 
+	// I'm not even sure how I can write an unit test for this
+	// one, especially since there is no multithreading and
+	// the instruction treats it as an atomic operation
 	if !vm.ValueStack.Drop(2, true) {
 		vm.Trap = true
 		vm.TrapReason = "ADD_I32: Stack Cleanup Error"
