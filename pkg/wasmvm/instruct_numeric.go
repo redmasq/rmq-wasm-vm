@@ -44,3 +44,26 @@ func ADD_I32(vm *VMState) error {
 	vm.PC += 1
 	return nil
 }
+
+// 0x6B sub.i32: Pull two I32 words off stack, push I32 sum word on stack
+func SUB_I32(vm *VMState) error {
+	enough, collect := vm.ValueStack.HasAtLeastOfType(2, TYPE_I32)
+	if !enough {
+		vm.Trap = true
+		vm.TrapReason = "SUB_I32: Stack Underflow"
+		return errors.New(vm.TrapReason)
+	}
+
+	// I'm not even sure how I can write an unit test for this
+	// one, especially since there is no multithreading and
+	// the instruction treats it as an atomic operation
+	if !vm.ValueStack.Drop(2, true) {
+		vm.Trap = true
+		vm.TrapReason = "SUB_I32: Stack Cleanup Error"
+		return errors.New(vm.TrapReason)
+	}
+	accumalator := uint32(uint64(collect[0].Value_I32) - uint64(collect[1].Value_I32))
+	vm.ValueStack.PushInt32(accumalator)
+	vm.PC += 1
+	return nil
+}
