@@ -34,12 +34,24 @@ func NewValueStackEntryI32(value uint32) *ValueStackEntry {
 	}
 }
 
+func NewValueStackEntryI64(value uint64) *ValueStackEntry {
+	return &ValueStackEntry{
+		EntryType: TYPE_I64,
+		Value_I64: value,
+	}
+}
+
 func (vs *ValueStack) Push(item *ValueStackEntry) {
 	vs.elements = append(vs.elements, *item)
 }
 
 func (vs *ValueStack) PushInt32(item uint32) {
 	stackEntry := NewValueStackEntryI32(item)
+	vs.Push(stackEntry)
+}
+
+func (vs *ValueStack) PushInt64(item uint64) {
+	stackEntry := NewValueStackEntryI64(item)
 	vs.Push(stackEntry)
 }
 

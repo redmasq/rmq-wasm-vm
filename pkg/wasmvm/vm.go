@@ -40,6 +40,7 @@ type ExposedFunc struct {
 // As a side note, I'm working with uint values
 // unless otherwise specified
 const WIDTH_I32 = 4
+const WIDTH_I64 = 8
 const WIDTH_F32 = 4
 
 // The actual VM state itself. Right now, we are only assuming a

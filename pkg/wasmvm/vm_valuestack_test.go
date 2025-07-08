@@ -27,6 +27,19 @@ func TestValueStack_PushInt32AndPop(t *testing.T) {
 	assert.True(t, vs.IsEmpty())
 }
 
+func TestValueStack_PushInt64AndPop(t *testing.T) {
+	vs := wasmvm.NewValueStack()
+	vs.PushInt64(0xDEADBEEFCAFED00D)
+	assert.Equal(t, 1, vs.Size())
+
+	item, ok := vs.Pop()
+	require.True(t, ok)
+	require.NotNil(t, item)
+	assert.Equal(t, wasmvm.TYPE_I64, item.EntryType)
+	assert.Equal(t, uint64(0xDEADBEEFCAFED00D), item.Value_I64)
+	assert.True(t, vs.IsEmpty())
+}
+
 func TestValueStack_HasAtLeastOfType(t *testing.T) {
 	vs := wasmvm.NewValueStack()
 	vs.PushInt32(1)

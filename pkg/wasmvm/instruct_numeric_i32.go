@@ -14,7 +14,7 @@ func CONST_I32(vm *VMState) error {
 		return errors.New(vm.TrapReason)
 	}
 	span1 := vm.PC + 1
-	span2 := span1 + WIDTH_F32
+	span2 := span1 + WIDTH_I32
 
 	val := binary.LittleEndian.Uint32(vm.Memory[span1:span2])
 	vm.ValueStack.PushInt32(val)
@@ -45,7 +45,7 @@ func ADD_I32(vm *VMState) error {
 	return nil
 }
 
-// 0x6B sub.i32: Pull two I32 words off stack, push I32 sum word on stack
+// 0x6B sub.i32: Pull two I32 words off stack, push I32 difference word on stack
 func SUB_I32(vm *VMState) error {
 	enough, collect := vm.ValueStack.HasAtLeastOfType(2, TYPE_I32)
 	if !enough {
