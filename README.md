@@ -6,7 +6,13 @@ Right now focused on the core specification [WebAssembly Specification](https://
 * <del>Initial Control Opcodes such as 0x01 NOP and 0x0B END</del>
 * Numeric Instructions by type i32, i64, f32, f64
     - const
-    - math
+    - math (i32 and i64)
+        + <del>add</del>
+        + <del>sub</del>
+        + <del>mul</del>
+        + div
+        + rem
+    - math (f32 and f64)
         + add
         + sub
         + mul

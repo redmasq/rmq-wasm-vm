@@ -159,3 +159,102 @@ func TestSUB_I32_OverflowWrap(t *testing.T) {
 	assert.Equal(t, uint32(0xFFFFFFFF), val.Value_I32)
 	assert.Equal(t, int(0), vm.ValueStack.Size())
 }
+
+func TestMUL_I32_NotEnoughStack(t *testing.T) {
+	cfg := &wasmvm.VMConfig{Size: 1}
+	vm, err := wasmvm.NewVM(cfg)
+	assert.NoError(t, err)
+	vm.Memory[0] = 0x6C // MUL_I32
+	vm.PC = 0
+	err = vm.Step()
+	assert.Error(t, err)
+	assert.Equal(t, 0, vm.ValueStack.Size())
+	assert.True(t, vm.Trap)
+	assert.Equal(t, "MUL_I32: Stack Underflow", vm.TrapReason)
+}
+
+func TestMUL_I32_MultiplyByZero(t *testing.T) {
+	cfg := &wasmvm.VMConfig{Size: 1}
+	vm, err := wasmvm.NewVM(cfg)
+	assert.NoError(t, err)
+	vm.ValueStack.PushInt32(12345)
+	vm.ValueStack.PushInt32(0)
+	vm.Memory[0] = 0x6C
+	vm.PC = 0
+	err = vm.Step()
+	assert.NoError(t, err)
+	val, ok := vm.ValueStack.Pop()
+	assert.True(t, ok)
+	assert.Equal(t, uint32(0), val.Value_I32)
+	assert.Equal(t, uint64(1), vm.PC)
+	assert.Equal(t, 0, vm.ValueStack.Size())
+}
+
+func TestMUL_I32_MultiplyByOne(t *testing.T) {
+	cfg := &wasmvm.VMConfig{Size: 1}
+	vm, err := wasmvm.NewVM(cfg)
+	assert.NoError(t, err)
+	vm.ValueStack.PushInt32(1)
+	vm.ValueStack.PushInt32(0x12345678)
+	vm.Memory[0] = 0x6C
+	vm.PC = 0
+	err = vm.Step()
+	assert.NoError(t, err)
+	val, ok := vm.ValueStack.Pop()
+	assert.True(t, ok)
+	assert.Equal(t, uint32(0x12345678), val.Value_I32)
+	assert.Equal(t, uint64(1), vm.PC)
+	assert.Equal(t, 0, vm.ValueStack.Size())
+}
+
+func TestMUL_I32_PositiveTimesNegative(t *testing.T) {
+	cfg := &wasmvm.VMConfig{Size: 1}
+	vm, err := wasmvm.NewVM(cfg)
+	assert.NoError(t, err)
+	vm.ValueStack.PushInt32(7)
+	vm.ValueStack.PushInt32(0xFFFFFFFD) // DWORD decimal -3
+	vm.Memory[0] = 0x6C
+	vm.PC = 0
+	err = vm.Step()
+	assert.NoError(t, err)
+	val, ok := vm.ValueStack.Pop()
+	assert.True(t, ok)
+	assert.Equal(t, uint32(0xFFFFFFEB), val.Value_I32) // DWORD decimal -21
+	assert.Equal(t, uint64(1), vm.PC)
+	assert.Equal(t, 0, vm.ValueStack.Size())
+}
+
+func TestMUL_I32_NegativeTimesNegative(t *testing.T) {
+	cfg := &wasmvm.VMConfig{Size: 1}
+	vm, err := wasmvm.NewVM(cfg)
+	assert.NoError(t, err)
+	vm.ValueStack.PushInt32(0xFFFFFFFE) // DWORD decimal -2
+	vm.ValueStack.PushInt32(0xFFFFFFFC) // DWORD decimal -4
+	vm.Memory[0] = 0x6C
+	vm.PC = 0
+	err = vm.Step()
+	assert.NoError(t, err)
+	val, ok := vm.ValueStack.Pop()
+	assert.True(t, ok)
+	assert.Equal(t, uint32(8), val.Value_I32)
+	assert.Equal(t, uint64(1), vm.PC)
+	assert.Equal(t, 0, vm.ValueStack.Size())
+}
+
+func TestMUL_I32_OverflowWrap(t *testing.T) {
+	cfg := &wasmvm.VMConfig{Size: 1}
+	vm, err := wasmvm.NewVM(cfg)
+	assert.NoError(t, err)
+	vm.ValueStack.PushInt32(0xFFFFFFFF) // DWORD decimal -1
+	vm.ValueStack.PushInt32(2)
+	vm.Memory[0] = 0x6C
+	vm.PC = 0
+	err = vm.Step()
+	assert.NoError(t, err)
+	val, ok := vm.ValueStack.Pop()
+	assert.True(t, ok)
+	// 0xFFFFFFFF * 2 = 0xFFFFFFFE (wraps as unsigned), which as int32 is -2
+	assert.Equal(t, ^uint32(0)-1, val.Value_I32)
+	assert.Equal(t, uint64(1), vm.PC)
+	assert.Equal(t, 0, vm.ValueStack.Size())
+}

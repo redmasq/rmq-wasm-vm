@@ -1,5 +1,10 @@
 package wasmvm
 
+import (
+	"errors"
+	"fmt"
+)
+
 type ValueStackEntryType int8
 
 const (
@@ -98,4 +103,18 @@ func (vs *ValueStack) Pop() (*ValueStackEntry, bool) {
 	item := vs.elements[n]
 	vs.elements = vs.elements[:n] // Slice off the last element
 	return &item, true
+}
+
+func NewStackUnderflowErrorAndSetTrapReason(vm *VMState, opName string) error {
+	trapMessage := fmt.Sprintf("%s: Stack Underflow", opName)
+	vm.Trap = true
+	vm.TrapReason = trapMessage
+	return errors.New(trapMessage)
+}
+
+func NewStackCleanupErrorAndSetTrapReason(vm *VMState, opName string) error {
+	trapMessage := fmt.Sprintf("%s: Stack Cleanup Error", opName)
+	vm.Trap = true
+	vm.TrapReason = trapMessage
+	return errors.New(trapMessage)
 }

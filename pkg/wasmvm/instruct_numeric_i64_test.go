@@ -163,3 +163,102 @@ func TestSUB_I64_OverflowWrap(t *testing.T) {
 	assert.Equal(t, ^uint64(0), val.Value_I64) // Short hand for all f;s
 	assert.Equal(t, int(0), vm.ValueStack.Size())
 }
+
+func TestMUL_I64_NotEnoughStack(t *testing.T) {
+	cfg := &wasmvm.VMConfig{Size: 1}
+	vm, err := wasmvm.NewVM(cfg)
+	assert.NoError(t, err)
+	vm.Memory[0] = 0x7E // MUL_I64
+	vm.PC = 0
+	err = vm.Step()
+	assert.Error(t, err)
+	assert.Equal(t, 0, vm.ValueStack.Size())
+	assert.True(t, vm.Trap)
+	assert.Equal(t, "MUL_I64: Stack Underflow", vm.TrapReason)
+}
+
+func TestMUL_I64_MultiplyByZero(t *testing.T) {
+	cfg := &wasmvm.VMConfig{Size: 1}
+	vm, err := wasmvm.NewVM(cfg)
+	assert.NoError(t, err)
+	vm.ValueStack.PushInt64(12345)
+	vm.ValueStack.PushInt64(0)
+	vm.Memory[0] = 0x7E
+	vm.PC = 0
+	err = vm.Step()
+	assert.NoError(t, err)
+	val, ok := vm.ValueStack.Pop()
+	assert.True(t, ok)
+	assert.Equal(t, uint64(0), val.Value_I64)
+	assert.Equal(t, uint64(1), vm.PC)
+	assert.Equal(t, 0, vm.ValueStack.Size())
+}
+
+func TestMUL_I64_MultiplyByOne(t *testing.T) {
+	cfg := &wasmvm.VMConfig{Size: 1}
+	vm, err := wasmvm.NewVM(cfg)
+	assert.NoError(t, err)
+	vm.ValueStack.PushInt64(1)
+	vm.ValueStack.PushInt64(0x0123456789ABCDEF)
+	vm.Memory[0] = 0x7E
+	vm.PC = 0
+	err = vm.Step()
+	assert.NoError(t, err)
+	val, ok := vm.ValueStack.Pop()
+	assert.True(t, ok)
+	assert.Equal(t, uint64(0x0123456789ABCDEF), val.Value_I64)
+	assert.Equal(t, uint64(1), vm.PC)
+	assert.Equal(t, 0, vm.ValueStack.Size())
+}
+
+func TestMUL_I64_PositiveTimesNegative(t *testing.T) {
+	cfg := &wasmvm.VMConfig{Size: 1}
+	vm, err := wasmvm.NewVM(cfg)
+	assert.NoError(t, err)
+	vm.ValueStack.PushInt64(7)
+	vm.ValueStack.PushInt64(0xFFFFFFFFFFFFFFFD) // QWORD decimal -3
+	vm.Memory[0] = 0x7E
+	vm.PC = 0
+	err = vm.Step()
+	assert.NoError(t, err)
+	val, ok := vm.ValueStack.Pop()
+	assert.True(t, ok)
+	assert.Equal(t, uint64(0xFFFFFFFFFFFFFFEB), val.Value_I64) // QWORD decimal -21
+	assert.Equal(t, uint64(1), vm.PC)
+	assert.Equal(t, 0, vm.ValueStack.Size())
+}
+
+func TestMUL_I64_NegativeTimesNegative(t *testing.T) {
+	cfg := &wasmvm.VMConfig{Size: 1}
+	vm, err := wasmvm.NewVM(cfg)
+	assert.NoError(t, err)
+	vm.ValueStack.PushInt64(0xFFFFFFFFFFFFFFFE) // QWORD decimal -2
+	vm.ValueStack.PushInt64(0xFFFFFFFFFFFFFFFC) // QWORD decimal -4
+	vm.Memory[0] = 0x7E
+	vm.PC = 0
+	err = vm.Step()
+	assert.NoError(t, err)
+	val, ok := vm.ValueStack.Pop()
+	assert.True(t, ok)
+	assert.Equal(t, uint64(8), val.Value_I64)
+	assert.Equal(t, uint64(1), vm.PC)
+	assert.Equal(t, 0, vm.ValueStack.Size())
+}
+
+func TestMUL_I64_OverflowWrap(t *testing.T) {
+	cfg := &wasmvm.VMConfig{Size: 1}
+	vm, err := wasmvm.NewVM(cfg)
+	assert.NoError(t, err)
+	vm.ValueStack.PushInt64(0xFFFFFFFFFFFFFFFF) // QWORD decimal -1
+	vm.ValueStack.PushInt64(2)
+	vm.Memory[0] = 0x7E
+	vm.PC = 0
+	err = vm.Step()
+	assert.NoError(t, err)
+	val, ok := vm.ValueStack.Pop()
+	assert.True(t, ok)
+	// 0xFFFFFFFFFFFFFFFF * 2 = 0xFFFFFFFFFFFFFFFE (wraps as unsigned), which as int64 is -2
+	assert.Equal(t, ^uint64(0)-1, val.Value_I64)
+	assert.Equal(t, uint64(1), vm.PC)
+	assert.Equal(t, 0, vm.ValueStack.Size())
+}

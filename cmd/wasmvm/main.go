@@ -23,12 +23,12 @@ func main() {
 	}
 	// Preload some instructions for testing
 	vm.Memory[0] = 0x01 // NOP
-	vm.Memory[1] = 0x43 // const.i32
+	vm.Memory[1] = 0x41 // const.i32
 	vm.Memory[2] = 2    // Little Endian a
 	vm.Memory[3] = 0    //
 	vm.Memory[4] = 0    //
 	vm.Memory[5] = 0
-	vm.Memory[6] = 0x43 // const.i32
+	vm.Memory[6] = 0x41 // const.i32
 	vm.Memory[7] = 3    // Little Endian b
 	vm.Memory[8] = 0
 	vm.Memory[9] = 0
