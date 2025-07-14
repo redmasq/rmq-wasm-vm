@@ -24,5 +24,18 @@ jobs:
     - name: Build
       run: go build -v ./...
 
-    - name: Test
-      run: go test -v ./...
+    - name: Test and generate coverage
+      run: |
+        go test -v -coverprofile=coverage.out ./...
+    - name: Check coverage threshold (85%)
+      run: |
+        coverage=$(go tool cover -func=coverage.out | grep total: | awk '{print substr($3, 1, length($3)-1)}')
+        echo "Total coverage: $coverage%"
+        threshold=85.0
+        awk -v coverage="$coverage" -v threshold="$threshold" 'BEGIN {if (coverage+0 < threshold) exit 1}'
+
+    - name: Upload coverage to Coveralls
+      uses: coverallsapp/github-action@v2
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        path-to-lcov: coverage.out

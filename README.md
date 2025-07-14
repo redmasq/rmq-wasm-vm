@@ -1,6 +1,11 @@
 # rmq-wasm-vm
 Go based WASM VM Library to be used by other projects
 
+# Current badges
+[![GitHub Go Coverage](https://github.com/redmasq/rmq-wasm-vm/actions/workflows/go.yml/badge.svg)](https://github.com/redmasq/rmq-wasm-vm/actions/workflows/go.yml)
+[![Coveralls Coverage Status](https://coveralls.io/repos/github/redmasq/rmq-wasm-vm/badge.svg?branch=main)](https://coveralls.io/github/redmasq/rmq-wasm-vm?branch=main)
+
+
 # Current plan \(abridged\)
 Right now focused on the core specification [WebAssembly Specification](https://webassembly.github.io/spec/core/)
 * <del>Initial Control Opcodes such as 0x01 NOP and 0x0B END</del>
