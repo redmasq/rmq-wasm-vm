@@ -258,3 +258,18 @@ func TestMUL_I32_OverflowWrap(t *testing.T) {
 	assert.Equal(t, uint64(1), vm.PC)
 	assert.Equal(t, 0, vm.ValueStack.Size())
 }
+
+func TestDIV_I32_DivideByZero(t *testing.T) {
+	cfg := &wasmvm.VMConfig{Size: 1}
+	vm, err := wasmvm.NewVM(cfg)
+	assert.NoError(t, err)
+	vm.ValueStack.PushInt32(1) // DWORD decimal -1
+	vm.ValueStack.PushInt32(0)
+	vm.Memory[0] = 0x6E
+	vm.PC = 0
+	err = vm.Step()
+	assert.Error(t, err)
+	assert.Equal(t, 0, vm.ValueStack.Size())
+	assert.True(t, vm.Trap)
+	assert.Equal(t, "DIVU_I32: Divide by Zero", vm.TrapReason)
+}
