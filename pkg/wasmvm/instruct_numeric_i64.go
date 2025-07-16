@@ -84,3 +84,32 @@ func MUL_I64(vm *VMState) error {
 	vm.PC += 1
 	return nil
 }
+
+// 0x80 div_u.i64: Pull two I64 words off stack, push I64 quotient word on stack
+func DIVU_I64(vm *VMState) error {
+	enough, collect := vm.ValueStack.HasAtLeastOfType(2, TYPE_I64)
+	if !enough {
+		return NewStackUnderflowErrorAndSetTrapReason(vm, "DIVU_I64")
+	}
+
+	// I'm not even sure how I can write an unit test for this
+	// one, especially since there is no multithreading and
+	// the instruction treats it as an atomic operation
+	if !vm.ValueStack.Drop(2, true) {
+		return NewStackCleanupErrorAndSetTrapReason(vm, "DIVU_I64")
+	}
+
+	dividend := collect[0].Value_I64
+	divisor := collect[1].Value_I64
+
+	if divisor == 0 {
+		vm.Trap = true
+		vm.TrapReason = "DIVU_I64: Divide by Zero"
+		return errors.New(vm.TrapReason)
+	}
+
+	accumulator, _ := bits.Div64(uint64(0), dividend, divisor)
+	vm.ValueStack.PushInt64(accumulator)
+	vm.PC += 1
+	return nil
+}
