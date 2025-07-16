@@ -82,3 +82,32 @@ func MUL_I32(vm *VMState) error {
 	vm.PC += 1
 	return nil
 }
+
+// 0x6E div_u.i32: Pull two I32 words off stack, push I32 quotient word on stack
+func DIVU_I32(vm *VMState) error {
+	enough, collect := vm.ValueStack.HasAtLeastOfType(2, TYPE_I32)
+	if !enough {
+		return NewStackUnderflowErrorAndSetTrapReason(vm, "DIVU_I32")
+	}
+
+	// I'm not even sure how I can write an unit test for this
+	// one, especially since there is no multithreading and
+	// the instruction treats it as an atomic operation
+	if !vm.ValueStack.Drop(2, true) {
+		return NewStackCleanupErrorAndSetTrapReason(vm, "DIVU_I32")
+	}
+
+	dividend := collect[0].Value_I32
+	divisor := collect[1].Value_I32
+
+	if divisor == 0 {
+		vm.Trap = true
+		vm.TrapReason = "DIVU_I32: Divide by Zero"
+		return errors.New(vm.TrapReason)
+	}
+
+	accumulator, _ := bits.Div32(uint32(0), dividend, divisor)
+	vm.ValueStack.PushInt32(accumulator)
+	vm.PC += 1
+	return nil
+}

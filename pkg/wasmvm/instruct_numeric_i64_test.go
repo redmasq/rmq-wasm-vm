@@ -13,7 +13,7 @@ func TestCONST_I64(t *testing.T) {
 	}
 	vm, err := wasmvm.NewVM(cfg)
 	assert.NoError(t, err)
-	vm.Memory[0] = 0x42 // Opcode
+	vm.Memory[0] = wasmvm.OP_CONST_I64 // Opcode
 	vm.Memory[1] = 0xEF
 	vm.Memory[2] = 0xCD
 	vm.Memory[3] = 0xAB
@@ -39,7 +39,7 @@ func TestCONST_I64_OOB(t *testing.T) {
 	vm, err := wasmvm.NewVM(cfg)
 	assert.NoError(t, err)
 
-	vm.Memory[0] = 0x42 // Opcode
+	vm.Memory[0] = wasmvm.OP_CONST_I64 // Opcode
 	vm.Memory[1] = 0x78
 	vm.Memory[2] = 0x56
 	vm.PC = 0
@@ -58,7 +58,7 @@ func TestADD_I64_NotEnoughStack(t *testing.T) {
 	vm, err := wasmvm.NewVM(cfg)
 	assert.NoError(t, err)
 	// opcode
-	vm.Memory[0] = 0x7C
+	vm.Memory[0] = wasmvm.OP_ADD_I64
 	vm.PC = 0
 	err = vm.Step()
 	assert.Error(t, err)
@@ -77,7 +77,7 @@ func TestADD_I64_SmallNumbers(t *testing.T) {
 	vm.ValueStack.PushInt64(5)
 	vm.ValueStack.PushInt64(7)
 	// opcode
-	vm.Memory[0] = 0x7C
+	vm.Memory[0] = wasmvm.OP_ADD_I64
 	vm.PC = 0
 	err = vm.Step()
 	assert.NoError(t, err)
@@ -97,7 +97,7 @@ func TestADD_I64_OverflowWrap(t *testing.T) {
 	vm.ValueStack.PushInt64(^uint64(0)) // I didn't feel like typing a bunch of f's
 	vm.ValueStack.PushInt64(2)
 	// opcode
-	vm.Memory[0] = 0x7C
+	vm.Memory[0] = wasmvm.OP_ADD_I64
 	vm.PC = 0
 	err = vm.Step()
 	assert.NoError(t, err)
@@ -115,7 +115,7 @@ func TestSUB_I64_NotEnoughStack(t *testing.T) {
 	vm, err := wasmvm.NewVM(cfg)
 	assert.NoError(t, err)
 	// opcode
-	vm.Memory[0] = 0x7D
+	vm.Memory[0] = wasmvm.OP_SUB_I64
 	vm.PC = 0
 	err = vm.Step()
 	assert.Error(t, err)
@@ -133,7 +133,7 @@ func TestSUB_I64_SmallNumbers(t *testing.T) {
 	vm.ValueStack.PushInt64(7)
 	vm.ValueStack.PushInt64(5)
 	// opcode
-	vm.Memory[0] = 0x7D
+	vm.Memory[0] = wasmvm.OP_SUB_I64
 	vm.PC = 0
 	err = vm.Step()
 	assert.NoError(t, err)
@@ -153,7 +153,7 @@ func TestSUB_I64_OverflowWrap(t *testing.T) {
 	vm.ValueStack.PushInt64(1)
 	vm.ValueStack.PushInt64(2)
 	// opcode
-	vm.Memory[0] = 0x7D
+	vm.Memory[0] = wasmvm.OP_SUB_I64
 	vm.PC = 0
 	err = vm.Step()
 	assert.NoError(t, err)
@@ -168,7 +168,7 @@ func TestMUL_I64_NotEnoughStack(t *testing.T) {
 	cfg := &wasmvm.VMConfig{Size: 1}
 	vm, err := wasmvm.NewVM(cfg)
 	assert.NoError(t, err)
-	vm.Memory[0] = 0x7E // MUL_I64
+	vm.Memory[0] = wasmvm.OP_MUL_I64 // MUL_I64
 	vm.PC = 0
 	err = vm.Step()
 	assert.Error(t, err)
@@ -183,7 +183,7 @@ func TestMUL_I64_MultiplyByZero(t *testing.T) {
 	assert.NoError(t, err)
 	vm.ValueStack.PushInt64(12345)
 	vm.ValueStack.PushInt64(0)
-	vm.Memory[0] = 0x7E
+	vm.Memory[0] = wasmvm.OP_MUL_I64
 	vm.PC = 0
 	err = vm.Step()
 	assert.NoError(t, err)
@@ -200,7 +200,7 @@ func TestMUL_I64_MultiplyByOne(t *testing.T) {
 	assert.NoError(t, err)
 	vm.ValueStack.PushInt64(1)
 	vm.ValueStack.PushInt64(0x0123456789ABCDEF)
-	vm.Memory[0] = 0x7E
+	vm.Memory[0] = wasmvm.OP_MUL_I64
 	vm.PC = 0
 	err = vm.Step()
 	assert.NoError(t, err)
@@ -217,7 +217,7 @@ func TestMUL_I64_PositiveTimesNegative(t *testing.T) {
 	assert.NoError(t, err)
 	vm.ValueStack.PushInt64(7)
 	vm.ValueStack.PushInt64(0xFFFFFFFFFFFFFFFD) // QWORD decimal -3
-	vm.Memory[0] = 0x7E
+	vm.Memory[0] = wasmvm.OP_MUL_I64
 	vm.PC = 0
 	err = vm.Step()
 	assert.NoError(t, err)
@@ -234,7 +234,7 @@ func TestMUL_I64_NegativeTimesNegative(t *testing.T) {
 	assert.NoError(t, err)
 	vm.ValueStack.PushInt64(0xFFFFFFFFFFFFFFFE) // QWORD decimal -2
 	vm.ValueStack.PushInt64(0xFFFFFFFFFFFFFFFC) // QWORD decimal -4
-	vm.Memory[0] = 0x7E
+	vm.Memory[0] = wasmvm.OP_MUL_I64
 	vm.PC = 0
 	err = vm.Step()
 	assert.NoError(t, err)
@@ -251,7 +251,7 @@ func TestMUL_I64_OverflowWrap(t *testing.T) {
 	assert.NoError(t, err)
 	vm.ValueStack.PushInt64(0xFFFFFFFFFFFFFFFF) // QWORD decimal -1
 	vm.ValueStack.PushInt64(2)
-	vm.Memory[0] = 0x7E
+	vm.Memory[0] = wasmvm.OP_MUL_I64
 	vm.PC = 0
 	err = vm.Step()
 	assert.NoError(t, err)
