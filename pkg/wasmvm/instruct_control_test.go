@@ -7,6 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// Tests the NOP instruction.
+// Program counter should increment, and no trap
 func TestNOP(t *testing.T) {
 	cfg := &wasmvm.VMConfig{
 		Size: 1,
@@ -21,6 +23,8 @@ func TestNOP(t *testing.T) {
 	assert.False(t, vm.Trap)
 }
 
+// Tests the END instruction
+// Program counter should increment, and there should be a trap
 func TestEND(t *testing.T) {
 	cfg := &wasmvm.VMConfig{
 		Size: 1,

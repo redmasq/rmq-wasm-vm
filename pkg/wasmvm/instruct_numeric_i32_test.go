@@ -7,6 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// Tests const.i32 - happy path
+// Should accept little endian immediate value and place i32 on the stack
 func TestCONST_I32(t *testing.T) {
 	cfg := &wasmvm.VMConfig{
 		Size: 6,
@@ -28,6 +30,8 @@ func TestCONST_I32(t *testing.T) {
 
 }
 
+// Tests const.i32 - out of bounds
+// This should detect a trap since there is no enough memory to finish the DWORD
 func TestCONST_I32_OOB(t *testing.T) {
 	cfg := &wasmvm.VMConfig{
 		Size: 4,
@@ -47,6 +51,8 @@ func TestCONST_I32_OOB(t *testing.T) {
 
 }
 
+// Tests add.i32 - Not Enough Stack
+// This should detect a trap since there is a lack of i32 values on the stack
 func TestADD_I32_NotEnoughStack(t *testing.T) {
 	cfg := &wasmvm.VMConfig{
 		Size: 1,
@@ -63,6 +69,7 @@ func TestADD_I32_NotEnoughStack(t *testing.T) {
 	assert.Equal(t, "ADD_I32: Stack Underflow", vm.TrapReason)
 }
 
+// Tests add.i32 - happy path - Small Numbers
 func TestADD_I32_SmallNumbers(t *testing.T) {
 	cfg := &wasmvm.VMConfig{
 		Size: 1,
