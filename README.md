@@ -15,7 +15,7 @@ Right now focused on the core specification [WebAssembly Specification](https://
         + <del>add</del>
         + <del>sub</del>
         + <del>mul</del>
-        + div
+        + <del>div</del>
         + rem
     - math (f32 and f64)
         + add
