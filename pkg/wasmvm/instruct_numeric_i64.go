@@ -23,7 +23,7 @@ func CONST_I64(vm *VMState) error {
 	return nil
 }
 
-// 0x7C add.i32: Pull two I64 words off stack, push I64 sum word on stack
+// 0x7C add.i64: Pull two I64 words off stack, push I64 sum word on stack
 func ADD_I64(vm *VMState) error {
 	enough, collect := vm.ValueStack.HasAtLeastOfType(2, TYPE_I64)
 	if !enough {
@@ -44,7 +44,7 @@ func ADD_I64(vm *VMState) error {
 	return nil
 }
 
-// 0x7D sub.i32: Pull two I64 words off stack, push I64 difference word on stack
+// 0x7D sub.i64: Pull two I64 words off stack, push I64 difference word on stack
 func SUB_I64(vm *VMState) error {
 	enough, collect := vm.ValueStack.HasAtLeastOfType(2, TYPE_I64)
 	if !enough {
