@@ -262,3 +262,140 @@ func TestMUL_I64_OverflowWrap(t *testing.T) {
 	assert.Equal(t, uint64(1), vm.PC)
 	assert.Equal(t, 0, vm.ValueStack.Size())
 }
+
+func TestDIVU_I64_DivideByZero(t *testing.T) {
+	cfg := &wasmvm.VMConfig{Size: 1}
+	vm, err := wasmvm.NewVM(cfg)
+	assert.NoError(t, err)
+	vm.ValueStack.PushInt64(1)
+	vm.ValueStack.PushInt64(0)
+	vm.Memory[0] = wasmvm.OP_DIVU_I64
+	vm.PC = 0
+	err = vm.Step()
+	assert.Error(t, err)
+	assert.Equal(t, 0, vm.ValueStack.Size())
+	assert.True(t, vm.Trap)
+	assert.Equal(t, "DIVU_I64: Divide by Zero", vm.TrapReason)
+}
+
+func TestDIVU_I64_StackUnderflow(t *testing.T) {
+	cfg := &wasmvm.VMConfig{Size: 1}
+	vm, err := wasmvm.NewVM(cfg)
+	assert.NoError(t, err)
+	vm.ValueStack.PushInt64(1)
+	vm.Memory[0] = wasmvm.OP_DIVU_I64
+	vm.PC = 0
+	err = vm.Step()
+	assert.Error(t, err)
+	assert.Equal(t, 1, vm.ValueStack.Size())
+	assert.True(t, vm.Trap)
+	assert.Equal(t, "DIVU_I64: Stack Underflow", vm.TrapReason)
+}
+
+func TestDIVU_I64_SmallValues(t *testing.T) {
+	cfg := &wasmvm.VMConfig{Size: 1}
+	vm, err := wasmvm.NewVM(cfg)
+	assert.NoError(t, err)
+	vm.ValueStack.PushInt64(10)
+	vm.ValueStack.PushInt64(5)
+	vm.Memory[0] = wasmvm.OP_DIVU_I64
+	vm.PC = 0
+	err = vm.Step()
+	assert.NoError(t, err)
+	assert.Equal(t, 1, vm.ValueStack.Size())
+	val, ok := vm.ValueStack.Pop()
+	assert.True(t, ok)
+	assert.Equal(t, uint64(2), val.Value_I64)
+	assert.Equal(t, uint64(1), vm.PC)
+	assert.Equal(t, 0, vm.ValueStack.Size())
+}
+
+func TestDIVU_I64_DivideByOne(t *testing.T) {
+	cfg := &wasmvm.VMConfig{Size: 1}
+	vm, err := wasmvm.NewVM(cfg)
+	assert.NoError(t, err)
+	vm.ValueStack.PushInt64(42)
+	vm.ValueStack.PushInt64(1)
+	vm.Memory[0] = wasmvm.OP_DIVU_I64
+	vm.PC = 0
+	err = vm.Step()
+	assert.NoError(t, err)
+	assert.Equal(t, 1, vm.ValueStack.Size())
+	val, ok := vm.ValueStack.Pop()
+	assert.True(t, ok)
+	assert.Equal(t, uint64(42), val.Value_I64)
+	assert.Equal(t, uint64(1), vm.PC)
+	assert.Equal(t, 0, vm.ValueStack.Size())
+}
+
+func TestDIVU_I64_DivisorLargerThanDividend(t *testing.T) {
+	cfg := &wasmvm.VMConfig{Size: 1}
+	vm, err := wasmvm.NewVM(cfg)
+	assert.NoError(t, err)
+	vm.ValueStack.PushInt64(42)
+	vm.ValueStack.PushInt64(137)
+	vm.Memory[0] = wasmvm.OP_DIVU_I64
+	vm.PC = 0
+	err = vm.Step()
+	assert.NoError(t, err)
+	assert.Equal(t, 1, vm.ValueStack.Size())
+	val, ok := vm.ValueStack.Pop()
+	assert.True(t, ok)
+	assert.Equal(t, uint64(0), val.Value_I64)
+	assert.Equal(t, uint64(1), vm.PC)
+	assert.Equal(t, 0, vm.ValueStack.Size())
+}
+
+func TestDIVU_I64_ZeroDividend(t *testing.T) {
+	cfg := &wasmvm.VMConfig{Size: 1}
+	vm, err := wasmvm.NewVM(cfg)
+	assert.NoError(t, err)
+	vm.ValueStack.PushInt64(0)
+	vm.ValueStack.PushInt64(137)
+	vm.Memory[0] = wasmvm.OP_DIVU_I64
+	vm.PC = 0
+	err = vm.Step()
+	assert.NoError(t, err)
+	assert.Equal(t, 1, vm.ValueStack.Size())
+	val, ok := vm.ValueStack.Pop()
+	assert.True(t, ok)
+	assert.Equal(t, uint64(0), val.Value_I64)
+	assert.Equal(t, uint64(1), vm.PC)
+	assert.Equal(t, 0, vm.ValueStack.Size())
+}
+
+func TestDIVU_I64_MaxValueBySelf(t *testing.T) {
+	cfg := &wasmvm.VMConfig{Size: 1}
+	vm, err := wasmvm.NewVM(cfg)
+	assert.NoError(t, err)
+	vm.ValueStack.PushInt64(^uint64(0))
+	vm.ValueStack.PushInt64(^uint64(0))
+	vm.Memory[0] = wasmvm.OP_DIVU_I64
+	vm.PC = 0
+	err = vm.Step()
+	assert.NoError(t, err)
+	assert.Equal(t, 1, vm.ValueStack.Size())
+	val, ok := vm.ValueStack.Pop()
+	assert.True(t, ok)
+	assert.Equal(t, uint64(1), val.Value_I64)
+	assert.Equal(t, uint64(1), vm.PC)
+	assert.Equal(t, 0, vm.ValueStack.Size())
+}
+
+func TestDIVU_I64_MaxValueByOnef(t *testing.T) {
+	cfg := &wasmvm.VMConfig{Size: 1}
+	vm, err := wasmvm.NewVM(cfg)
+	assert.NoError(t, err)
+	vm.ValueStack.PushInt64(^uint64(0))
+	vm.ValueStack.PushInt64(1)
+	vm.Memory[0] = wasmvm.OP_DIVU_I64
+	vm.PC = 0
+	err = vm.Step()
+	assert.NoError(t, err)
+	assert.Equal(t, 1, vm.ValueStack.Size())
+	val, ok := vm.ValueStack.Pop()
+	assert.True(t, ok)
+	assert.Equal(t, ^uint64(0), val.Value_I64)
+	assert.Equal(t, uint64(1), vm.PC)
+	assert.Equal(t, 0, vm.ValueStack.Size())
+}
