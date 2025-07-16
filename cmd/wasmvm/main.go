@@ -3,41 +3,105 @@ package main
 import (
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/redmasq/rmq-wasm-vm/pkg/wasmvm"
 )
 
-func main() {
-	// Demo: minimal config, empty memory, runs NOP then ADD8
+type ExecutionContext struct {
+	Id      int
+	Title   string
+	Want    any // Test support intentionally leaked
+	WantT   wasmvm.ValueStackEntryType
+	Program []byte
+}
+
+var executions = []ExecutionContext{
+	{
+		Id:    0,
+		Title: "2 + 3 = 5",
+		Program: []byte{
+			wasmvm.OP_CONST_I32, 2, 0, 0, 0,
+			wasmvm.OP_CONST_I32, 3, 0, 0, 0,
+			wasmvm.OP_ADD_I32,
+			wasmvm.OP_END,
+		},
+	},
+	{
+		Id:    1,
+		Title: "NOP, 5 * 8 = 40",
+		Program: []byte{
+			wasmvm.OP_NOP,
+			wasmvm.OP_CONST_I32, 5, 0, 0, 0,
+			wasmvm.OP_CONST_I32, 8, 0, 0, 0,
+			wasmvm.OP_MUL_I32,
+			wasmvm.OP_END,
+		},
+	},
+	{
+		Id:    1,
+		Title: "NOP, 8 - 5 = 3, NOP",
+		Program: []byte{
+			wasmvm.OP_NOP,
+			wasmvm.OP_CONST_I64, 5, 0, 0, 0, 0, 0, 0, 0,
+			wasmvm.OP_CONST_I64, 8, 0, 0, 0, 0, 0, 0, 0,
+			wasmvm.OP_SUB_I64,
+			wasmvm.OP_END,
+		},
+	},
+}
+
+// SetupAndRunVM initializes a WASM VM with the given ExecutionContext, loads
+// its program into memory, and executes it. Returns the final VM state
+// and any error encountered during setup or execution.
+func SetupAndRunVM(context *ExecutionContext) (*wasmvm.VMState, error) {
+	fmt.Printf("Starting %d with title of %s", context.Id, context.Title)
+	size := uint64(len(context.Program))
 	cfg := &wasmvm.VMConfig{
-		Size:   13,
+		Image: &wasmvm.ImageConfig{
+			Type:  "array",
+			Size:  size,
+			Array: context.Program,
+		},
+		Size:   size,
 		Rings:  map[uint8]wasmvm.RingConfig{},
-		Stdin:  os.Stdin,
+		Stdin:  nil,
 		Stdout: os.Stdout,
 		Stderr: os.Stderr,
 	}
+
 	vm, err := wasmvm.NewVM(cfg)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to initialize VM: %v\n", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("failed to initialize vm: %v", err)
 	}
-	// Preload some instructions for testing
-	vm.Memory[0] = wasmvm.OP_NOP       // NOP
-	vm.Memory[1] = wasmvm.OP_CONST_I32 // const.i32
-	vm.Memory[2] = 2                   // Little Endian a
-	vm.Memory[3] = 0                   //
-	vm.Memory[4] = 0                   //
-	vm.Memory[5] = 0
-	vm.Memory[6] = wasmvm.OP_CONST_I32 // const.i32
-	vm.Memory[7] = 3                   // Little Endian b
-	vm.Memory[8] = 0
-	vm.Memory[9] = 0
-	vm.Memory[10] = 0
-	vm.Memory[11] = wasmvm.OP_ADD_I32 // add.i32
-	vm.Memory[12] = wasmvm.OP_END     // END: Let's blow this popcicle stand
+
 	// Set PC to 0
 	vm.PC = 0
 	vm.MainLoop()
-	fmt.Printf("Memory after execution: %+v\n", vm.Memory)
-	fmt.Printf("Stack after execution: %#v\n", vm.ValueStack)
+	fmt.Printf("(%d) Memory after execution: %+v\n", context.Id, vm.Memory)
+	fmt.Printf("(%d) Stack after execution: %#v\n", context.Id, vm.ValueStack)
+
+	return vm, nil
+}
+
+// wrapGoRoutine runs SetupAndRunVM in a goroutine for the provided context,
+// and calls wg.Done() when finished. Intended for use with sync.WaitGroup
+// to coordinate concurrent VM execution.
+// This method is not part of the test suite
+func wrapGoRoutine(context *ExecutionContext, wg *sync.WaitGroup) {
+	defer wg.Done()
+	SetupAndRunVM(context)
+}
+
+// main is the entry point for this program. It defines a set of VM execution
+// contexts, then runs each in parallel goroutines, waiting for all to finish.
+// This method is not part of the test suite
+func main() {
+	var wg sync.WaitGroup
+	for i := range executions {
+		context := &executions[i]
+		wg.Add(1)
+		go wrapGoRoutine(context, &wg)
+	}
+	wg.Wait()
 }

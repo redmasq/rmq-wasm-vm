@@ -5,6 +5,7 @@ import (
 	"fmt"
 )
 
+//go:generate stringer -type=ValueStackEntryType
 type ValueStackEntryType int8
 
 const (
