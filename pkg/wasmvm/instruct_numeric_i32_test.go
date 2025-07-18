@@ -1,11 +1,68 @@
 package wasmvm_test
 
 import (
+	"math"
 	"testing"
 
 	"github.com/redmasq/rmq-wasm-vm/pkg/wasmvm"
 	"github.com/stretchr/testify/assert"
 )
+
+type I32TestCase struct {
+	name          string // Test case description
+	memoryContent []byte // Initial memory content
+	expectTrap    bool   // Expect a trap error
+	trapReason    string // Expected reason for trap, if any
+	expectValue   uint32 // Expected value pushed on the stack
+	expectPC      uint64 // Expected program counter after execution
+	stackValues   []uint32
+	expectedStack int // Stack size after execution, before popping result
+}
+
+func runTestBatch(t *testing.T, tests []I32TestCase) {
+	for i := range tests {
+		tc := tests[i]
+		name := tc.name
+		memorySize := uint64(len(tc.memoryContent))
+		t.Run(name, func(t *testing.T) {
+			// Initialize VM configuration
+			cfg := &wasmvm.VMConfig{
+				Size: memorySize,
+				Image: &wasmvm.ImageConfig{
+					Type:  "array",
+					Array: tc.memoryContent,
+					Size:  memorySize,
+				},
+			}
+			vm, err := wasmvm.NewVM(cfg)
+			assert.NoError(t, err)
+
+			// Push test values onto stack
+			for _, val := range tc.stackValues {
+				vm.ValueStack.PushInt32(val)
+			}
+
+			vm.PC = 0
+
+			err = vm.Step()
+
+			if tc.expectTrap {
+				assert.Error(t, err)
+				assert.True(t, vm.Trap)
+				assert.Equal(t, tc.trapReason, vm.TrapReason)
+				assert.Equal(t, tc.expectedStack, vm.ValueStack.Size())
+			} else {
+				assert.NoError(t, err)
+				assert.False(t, vm.Trap, "Trap was raised: "+vm.TrapReason)
+				assert.Equal(t, tc.expectedStack, vm.ValueStack.Size())
+				val, success := vm.ValueStack.Pop()
+				assert.True(t, success)
+				assert.Equal(t, tc.expectValue, val.Value_I32)
+				assert.Equal(t, tc.expectPC, vm.PC)
+			}
+		})
+	}
+}
 
 // Tests const.i32 - happy path
 // Should accept little endian immediate value and place i32 on the stack
@@ -385,7 +442,7 @@ func TestDIVU_I32_MaxValueBySelf(t *testing.T) {
 	assert.Equal(t, 0, vm.ValueStack.Size())
 }
 
-func TestDIVU_I32_MaxValueByOnef(t *testing.T) {
+func TestDIVU_I32_MaxValueByOne(t *testing.T) {
 	cfg := &wasmvm.VMConfig{Size: 1}
 	vm, err := wasmvm.NewVM(cfg)
 	assert.NoError(t, err)
@@ -401,4 +458,166 @@ func TestDIVU_I32_MaxValueByOnef(t *testing.T) {
 	assert.Equal(t, ^uint32(0), val.Value_I32)
 	assert.Equal(t, uint64(1), vm.PC)
 	assert.Equal(t, 0, vm.ValueStack.Size())
+}
+
+// Table tests for div_s.i32
+func TestDIVS_I32(t *testing.T) {
+	np := "DIVS_I32: "
+	tests := []I32TestCase{
+		{
+			name:        np + "Divide By Zero",
+			stackValues: []uint32{1, 0},
+			memoryContent: []byte{
+				wasmvm.OP_DIVS_I32,
+			},
+			expectTrap:    true,
+			trapReason:    np + "Divide by Zero",
+			expectPC:      0,
+			expectedStack: 0,
+		},
+		{
+			name:        np + "Small Values - Exact",
+			stackValues: []uint32{10, 5},
+			memoryContent: []byte{
+				wasmvm.OP_DIVS_I32,
+			},
+			expectTrap:    false,
+			expectValue:   2,
+			expectPC:      1,
+			expectedStack: 1,
+		},
+		{
+			name:        np + "Small Values - Non-Exact",
+			stackValues: []uint32{11, 5},
+			memoryContent: []byte{
+				wasmvm.OP_DIVS_I32,
+			},
+			expectTrap:    false,
+			expectValue:   2,
+			expectPC:      1,
+			expectedStack: 1,
+		},
+		{
+			name:        np + "Min Negative by Negative One Division Overflow Trap",
+			stackValues: []uint32{uint32(0x80000000), ^uint32(0)},
+			memoryContent: []byte{
+				wasmvm.OP_DIVS_I32,
+			},
+			expectTrap:    true,
+			trapReason:    np + "Signed Division Overflow",
+			expectPC:      0,
+			expectedStack: 0,
+		},
+		{
+			name:        np + "Stack Underflow",
+			stackValues: []uint32{uint32(1)},
+			memoryContent: []byte{
+				wasmvm.OP_DIVS_I32,
+			},
+			expectTrap:    true,
+			trapReason:    np + "Stack Underflow",
+			expectPC:      1,
+			expectedStack: 1,
+		},
+		{
+			name:        np + "Positive One by Positive One",
+			stackValues: []uint32{1, 1},
+			memoryContent: []byte{
+				wasmvm.OP_DIVS_I32,
+			},
+			expectTrap:    false,
+			expectValue:   1,
+			expectPC:      1,
+			expectedStack: 1,
+		},
+		{
+			name:        np + "Positive One by Negative One",
+			stackValues: []uint32{1, ^uint32(0)},
+			memoryContent: []byte{
+				wasmvm.OP_DIVS_I32,
+			},
+			expectTrap:    false,
+			expectValue:   ^uint32(0), // DWORD for -1
+			expectPC:      1,
+			expectedStack: 1,
+		},
+		{
+			name:        np + "Negative One by Positive One",
+			stackValues: []uint32{^uint32(0), 1},
+			memoryContent: []byte{
+				wasmvm.OP_DIVS_I32,
+			},
+			expectTrap:    false,
+			expectValue:   ^uint32(0), // DWORD for -1
+			expectPC:      1,
+			expectedStack: 1,
+		},
+		{
+			name:        np + "Negative One by Negative One",
+			stackValues: []uint32{^uint32(0), ^uint32(0)},
+			memoryContent: []byte{
+				wasmvm.OP_DIVS_I32,
+			},
+			expectTrap:    false,
+			expectValue:   1,
+			expectPC:      1,
+			expectedStack: 1,
+		},
+		{
+			name:        np + "Max Positive by Positive One",
+			stackValues: []uint32{uint32(math.MaxInt32), 1},
+			memoryContent: []byte{
+				wasmvm.OP_DIVS_I32,
+			},
+			expectTrap:    false,
+			expectValue:   uint32(math.MaxInt32),
+			expectPC:      1,
+			expectedStack: 1,
+		},
+		{
+			name:        np + "Max Positive by Negative One",
+			stackValues: []uint32{uint32(math.MaxInt32), ^uint32(0)},
+			memoryContent: []byte{
+				wasmvm.OP_DIVS_I32,
+			},
+			expectTrap:    false,
+			expectValue:   uint32(0x80000001),
+			expectPC:      1,
+			expectedStack: 1,
+		},
+		{
+			name:        np + "Max Positive by Max Positive",
+			stackValues: []uint32{uint32(math.MaxInt32), uint32(math.MaxInt32)},
+			memoryContent: []byte{
+				wasmvm.OP_DIVS_I32,
+			},
+			expectTrap:    false,
+			expectValue:   uint32(1),
+			expectPC:      1,
+			expectedStack: 1,
+		},
+		{
+			name:        np + "Zero Dividend",
+			stackValues: []uint32{uint32(0), uint32(42)},
+			memoryContent: []byte{
+				wasmvm.OP_DIVS_I32,
+			},
+			expectTrap:    false,
+			expectValue:   uint32(0),
+			expectPC:      1,
+			expectedStack: 1,
+		},
+		{
+			name:        np + "Dividend Smaller than Divisor",
+			stackValues: []uint32{uint32(41), uint32(42)},
+			memoryContent: []byte{
+				wasmvm.OP_DIVS_I32,
+			},
+			expectTrap:    false,
+			expectValue:   uint32(0),
+			expectPC:      1,
+			expectedStack: 1,
+		},
+	}
+	runTestBatch(t, tests)
 }

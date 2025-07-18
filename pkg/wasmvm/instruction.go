@@ -15,6 +15,7 @@ const (
 	OP_ADD_I32  = 0x6A
 	OP_SUB_I32  = 0x6B
 	OP_MUL_I32  = 0x6C
+	OP_DIVS_I32 = 0x6D
 	OP_DIVU_I32 = 0x6E
 
 	// Numeric I64 arithmatic instructions
@@ -33,6 +34,7 @@ func defaultInstructionMap() map[uint8]Instruction {
 		OP_ADD_I32:   ADD_I32,
 		OP_SUB_I32:   SUB_I32,
 		OP_MUL_I32:   MUL_I32,
+		OP_DIVS_I32:  DIVS_I32,
 		OP_DIVU_I32:  DIVU_I32,
 		OP_ADD_I64:   ADD_I64,
 		OP_SUB_I64:   SUB_I64,
