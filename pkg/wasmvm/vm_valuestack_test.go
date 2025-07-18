@@ -56,6 +56,22 @@ func TestValueStack_HasAtLeastOfType(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestValueStack_HasAtLeastOfType_ManyValues(t *testing.T) {
+	vs := wasmvm.NewValueStack()
+	vs.PushInt32(uint32(1))
+	vs.PushInt32(uint32(2))
+	vs.PushInt64(^uint64(0))
+	vs.PushInt64(uint64(123))
+	vs.PushInt32(3)
+	vs.PushInt32(^uint32(0))
+	ok, collect := vs.HasAtLeastOfType(2, wasmvm.TYPE_I32)
+	assert.True(t, ok)
+	// Due to the way I implment things, the returns things
+	// opposite to intuition
+	assert.Equal(t, uint32(3), collect[0].Value_I32)
+	assert.Equal(t, ^uint32(0), collect[1].Value_I32)
+}
+
 func TestValueStack_Drop(t *testing.T) {
 	vs := wasmvm.NewValueStack()
 	vs.PushInt32(42)

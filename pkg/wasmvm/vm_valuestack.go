@@ -73,6 +73,10 @@ func (vs *ValueStack) Size() int {
 	return len(vs.elements)
 }
 
+// If the last n values on the stack are not of ValueStackEntryType entryType
+// returns false, nil
+// Otherwise returns true, []ValueStackEntry as a slice of the stack
+// Please note that the top of the stack is at the end of the array
 func (vs *ValueStack) HasAtLeastOfType(cnt int, entryType ValueStackEntryType) (bool, []ValueStackEntry) {
 	if !vs.HasAtLeast(cnt) {
 		return false, nil
