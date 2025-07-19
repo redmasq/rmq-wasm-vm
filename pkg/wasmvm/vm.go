@@ -137,7 +137,9 @@ func (vm *VMState) MainLoop() {
 	for !vm.Trap {
 		err := vm.Step()
 		if err != nil && vm.Config != nil && vm.Config.Stderr != nil {
-			fmt.Fprintf(vm.Config.Stderr, "Execution error: %v\n", err)
+			if vm.TrapReason != "END: Call Stack Empty" {
+				fmt.Fprintf(vm.Config.Stderr, "Execution error: %v\n", err)
+			}
 		}
 	}
 }

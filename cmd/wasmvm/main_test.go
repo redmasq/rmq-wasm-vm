@@ -65,7 +65,6 @@ func TestSetupAndRunVM(t *testing.T) {
 			switch tc.WantT {
 			case wasmvm.TYPE_I32:
 				assert.Equal(t, tc.Want, collect[0].Value_I32)
-				break
 			case wasmvm.TYPE_I64:
 				assert.Equal(t, tc.Want, collect[0].Value_I64)
 			default:
