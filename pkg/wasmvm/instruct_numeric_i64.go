@@ -9,7 +9,7 @@ import (
 // 0x42 const.i64: reads 8 octets little endian and pushes unit64 to stack
 func CONST_I64(vm *VMState) error {
 	const width = 1 + WIDTH_I64
-	if vm.PC+width >= uint64(len(vm.Memory)) {
+	if vm.PC+width > uint64(len(vm.Memory)) {
 		vm.Trap = true
 		vm.TrapReason = "CONST_I64: Out of bounds"
 		return errors.New(vm.TrapReason)
