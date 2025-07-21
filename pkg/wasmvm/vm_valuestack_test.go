@@ -1,6 +1,7 @@
 package wasmvm_test
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/redmasq/rmq-wasm-vm/pkg/wasmvm"
@@ -298,6 +299,10 @@ func TestValueStackEntryString(t *testing.T) {
 		{
 			vType: wasmvm.TYPE_F64,
 			name:  "TYPE_F64",
+		},
+		{
+			vType: wasmvm.ValueStackEntryType(int(wasmvm.TYPE_F64) + 1),
+			name:  "ValueStackEntryType(" + strconv.Itoa(int(wasmvm.TYPE_F64)+1) + ")",
 		},
 	}
 
