@@ -110,6 +110,8 @@ func (vs *ValueStack) Pop() (*ValueStackEntry, bool) {
 	return &item, true
 }
 
+type ErrorGenerator func(*VMState, string) error
+
 func NewStackUnderflowErrorAndSetTrapReason(vm *VMState, opName string) error {
 	trapMessage := fmt.Sprintf("%s: Stack Underflow", opName)
 	vm.Trap = true
