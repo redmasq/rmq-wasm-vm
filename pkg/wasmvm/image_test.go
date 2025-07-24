@@ -2,6 +2,7 @@ package wasmvm_test
 
 import (
 	"errors"
+	"strconv"
 	"testing"
 
 	"github.com/redmasq/rmq-wasm-vm/pkg/wasmvm"
@@ -9,123 +10,304 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPopulateImage_FileType(t *testing.T) {
-	// Mock ReadFile
-	original := wasmvm.ReadFile
-	defer func() { wasmvm.ReadFile = original }()
-	wasmvm.ReadFile = func(string) ([]byte, error) {
-		return []byte{0xAB, 0xCD}, nil
-	}
+type readFileMock func(string) ([]byte, error)
+type testType int8
 
-	mem := make([]byte, 4)
-	cfg := &wasmvm.ImageConfig{
-		Type:     "file",
-		Filename: "fake.file",
+const (
+	testFile testType = iota
+	testArray
+	testSparse
+	testEmpty
+	testOther
+)
+
+const _testType_name = "testFiletestArraytestSparsetestEmptytestOther"
+
+var _testType_index = [...]uint8{0, 8, 17, 27, 36, 45}
+
+func (i testType) String() string {
+	if i < 0 || i >= testType(len(_testType_index)-1) {
+		return "testType(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
-	warns, err := wasmvm.PopulateImage(mem, cfg, false)
-	assert.NoError(t, err)
-	assert.Empty(t, warns)
-	assert.Equal(t, []byte{0xAB, 0xCD, 0, 0}, mem)
+	return _testType_name[_testType_index[i]:_testType_index[i+1]]
 }
 
-func TestPopulateImage_FileType_ReadError(t *testing.T) {
-	// Mock ReadFile
-	original := wasmvm.ReadFile
-	defer func() { wasmvm.ReadFile = original }()
-	wasmvm.ReadFile = func(string) ([]byte, error) {
-		return nil, errors.New("I/O Error because \"reasons\"")
-	}
-
-	mem := make([]byte, 4)
-	cfg := &wasmvm.ImageConfig{
-		Type:     "file",
-		Filename: "fake.file",
-	}
-	warns, err := wasmvm.PopulateImage(mem, cfg, false)
-	assert.Error(t, err)
-	assert.Empty(t, warns)
-	assert.Contains(t, err.Error(), "I/O Error because \"reasons\"")
+type imageTestCase struct {
+	name           string
+	tType          testType
+	mockReadFile   readFileMock
+	mockArray      []byte
+	expectError    bool
+	expertWarns    bool
+	errorContains  string
+	warnsContains  string
+	memoryContains []byte
+	imageSize      int
+	forceImageSize bool
+	memorySize     int
+	useStrict      bool
 }
 
-func TestPopulateImage_FileType_SizeMismatch(t *testing.T) {
-	// Mock ReadFile
-	original := wasmvm.ReadFile
-	defer func() { wasmvm.ReadFile = original }()
-	wasmvm.ReadFile = func(string) ([]byte, error) {
-		return []byte{0xAB, 0xCD, 0x01, 0x02}, nil
+func TestPopulateImage(t *testing.T) {
+	tests := []imageTestCase{
+		{
+			name:  "success - same size",
+			tType: testFile,
+			mockReadFile: func(string) ([]byte, error) {
+				return []byte{0xAB, 0xCD}, nil
+			},
+			expectError:    false,
+			expertWarns:    false,
+			memoryContains: []byte{0xAB, 0xCD},
+			memorySize:     2,
+			useStrict:      true,
+		},
+		{
+			name:  "success - smaller size",
+			tType: testFile,
+			mockReadFile: func(string) ([]byte, error) {
+				return []byte{0xAB, 0xCD}, nil
+			},
+			expectError:    false,
+			expertWarns:    false,
+			memoryContains: []byte{0xAB, 0xCD, 0, 0},
+			memorySize:     4,
+			useStrict:      true,
+		},
+		{
+			name:  "success - empty file",
+			tType: testFile,
+			mockReadFile: func(string) ([]byte, error) {
+				return []byte{}, nil
+			},
+			expectError:    false,
+			expertWarns:    false,
+			memoryContains: []byte{0x00, 0x00, 0x00, 0x00},
+			memorySize:     4,
+			useStrict:      true,
+		},
+		{
+			name:  "failure - read error",
+			tType: testFile,
+			mockReadFile: func(string) ([]byte, error) {
+				return nil, errors.New("I/O Error because \"reasons\"")
+			},
+			expectError:    true,
+			expertWarns:    false,
+			memoryContains: nil,
+			errorContains:  "I/O Error because \"reasons\"",
+			memorySize:     4,
+			useStrict:      true,
+		},
+		{
+			name:  "warn - oversized file",
+			tType: testFile,
+			mockReadFile: func(string) ([]byte, error) {
+				return []byte{0xAB, 0xCD, 0x12, 0x34}, nil
+			},
+			expectError:    false,
+			expertWarns:    true,
+			memoryContains: []byte{0xAB, 0xCD, 0x12},
+			warnsContains:  "file entry image is larger than memory file:4 vs mem:3",
+			memorySize:     3,
+			useStrict:      false,
+		},
+		{
+			name:  "failure - oversized file",
+			tType: testFile,
+			mockReadFile: func(string) ([]byte, error) {
+				return []byte{0xAB, 0xCD, 0x12, 0x34}, nil
+			},
+			expectError:    true,
+			expertWarns:    false,
+			memoryContains: nil,
+			errorContains:  "file entry image is larger than memory file:4 vs mem:3",
+			memorySize:     3,
+			useStrict:      true,
+		},
+		{
+			name:           "success - same size",
+			tType:          testArray,
+			mockArray:      []byte{0xAB, 0xCD},
+			expectError:    false,
+			expertWarns:    false,
+			memoryContains: []byte{0xAB, 0xCD},
+			memorySize:     2,
+			useStrict:      true,
+		},
+		{
+			name:           "success - smaller size",
+			tType:          testArray,
+			mockArray:      []byte{0xAB, 0xCD},
+			expectError:    false,
+			expertWarns:    false,
+			memoryContains: []byte{0xAB, 0xCD, 0x00, 0x00},
+			memorySize:     4,
+			useStrict:      true,
+		},
+		{
+			name:           "warn - out of bounds",
+			tType:          testArray,
+			mockArray:      []byte{0xAB, 0xCD, 0x12, 0x34},
+			expectError:    false,
+			expertWarns:    true,
+			memoryContains: []byte{0xAB, 0xCD, 0x12},
+			warnsContains:  "array entry larger than size",
+			memorySize:     3,
+			useStrict:      false,
+		},
+		{
+			name:           "failure - out of bounds",
+			tType:          testArray,
+			mockArray:      []byte{0xAB, 0xCD, 0x12, 0x34},
+			expectError:    true,
+			expertWarns:    false,
+			memoryContains: nil,
+			warnsContains:  "array entry larger than size",
+			memorySize:     3,
+			useStrict:      true,
+		},
+		{
+			name:           "warn - size mismatch",
+			tType:          testArray,
+			mockArray:      []byte{0xAB, 0xCD},
+			expectError:    false,
+			expertWarns:    true,
+			memoryContains: []byte{0xAB, 0xCD, 0x00, 0x00},
+			warnsContains:  "array size larger than memory",
+			memorySize:     4,
+			imageSize:      6,
+			useStrict:      false,
+		},
+		{
+			name:           "failure - size mismatch",
+			tType:          testArray,
+			mockArray:      []byte{0xAB, 0xCD},
+			expectError:    true,
+			expertWarns:    false,
+			memoryContains: nil,
+			errorContains:  "array size larger than memory",
+			memorySize:     4,
+			imageSize:      6,
+			useStrict:      true,
+		},
+		{
+			name:           "failure - zero size for non-strict",
+			tType:          testArray,
+			mockArray:      []byte{0xAB, 0xCD},
+			expectError:    true, // This is a specific case where non-strict still fails
+			expertWarns:    false,
+			memoryContains: nil,
+			errorContains:  "array type requires size",
+			memorySize:     4,
+			imageSize:      0,
+			forceImageSize: true,
+			useStrict:      false,
+		},
+		{
+			name:           "failure - zero size for strict",
+			tType:          testArray,
+			mockArray:      []byte{0xAB, 0xCD},
+			expectError:    true,
+			expertWarns:    false,
+			memoryContains: nil,
+			errorContains:  "array type requires size",
+			memorySize:     4,
+			imageSize:      0,
+			forceImageSize: true,
+			useStrict:      true,
+		},
 	}
 
-	mem := make([]byte, 3)
-	cfg := &wasmvm.ImageConfig{
-		Type:     "file",
-		Filename: "fake.file",
+	for i := range tests {
+		tc := tests[i]
+		name := tc.tType.String() + ": " + tc.name
+		var cfg *wasmvm.ImageConfig = nil
+		var replaceReadFile readFileMock = nil
+		t.Run(name, func(t *testing.T) {
+			switch tc.tType {
+			case testFile:
+				cfg = &wasmvm.ImageConfig{
+					Type:     "file",
+					Filename: "fake.file",
+				}
+				replaceReadFile = tc.mockReadFile
+			case testArray:
+				/*
+					The lack of a ternary operator actually annoys me about the language
+					I almost made an Excel style if
+					func If[T any](someCondition bool, ifTrue, ifFalse T) T {
+						if someCondition {
+							return ifTrue
+						}
+						return ifFalse
+					}
+
+					and then
+
+					size := uint64(If(tc.imageSize > 0, tc.imageSize, tc.memorySize))
+
+					But that's probably not proper Golang either... Well, assuming
+					that generics can even be used like that
+				*/
+				size := uint64(tc.memorySize)
+				if tc.forceImageSize || tc.imageSize != 0 {
+					size = uint64(tc.imageSize)
+				}
+				cfg = &wasmvm.ImageConfig{
+					Type:  "array",
+					Size:  size,
+					Array: tc.mockArray,
+				}
+			}
+
+			// idea borrowed technically from JavaScript
+			// Self-executing function/closure. In this case
+			// defer triggers when a function ends, so I am
+			// bounding the scope with the embedded function
+			// in order to ensure that defer executes inside
+			// the loop correctly for cleanup
+			// Or...
+			// Just to say the "fightin' words" ...
+			// "glorified try/finally block" [or try-with-resources or using(){}]
+			// Better than saying "RAII, can I haz it?"; Upyo~~! I just did!
+			func() {
+
+				if replaceReadFile != nil {
+					original := wasmvm.ReadFile
+					defer func() { wasmvm.ReadFile = original }()
+					wasmvm.ReadFile = replaceReadFile
+				}
+
+				mem := make([]byte, tc.memorySize)
+
+				warns, err := wasmvm.PopulateImage(mem, cfg, tc.useStrict)
+
+				if tc.expectError {
+					assert.Error(t, err)
+					assert.Empty(t, warns)
+					if tc.errorContains != "" {
+						assert.Contains(t, err.Error(), tc.errorContains)
+					}
+
+				} else {
+					assert.NoError(t, err)
+					if tc.expertWarns {
+						assert.NotEmpty(t, warns)
+						if tc.warnsContains != "" {
+							assert.Contains(t, warns[0], tc.warnsContains)
+						}
+					}
+					if tc.memoryContains != nil {
+						assert.Equal(t, tc.memoryContains, mem)
+					} else {
+						assert.Empty(t, mem)
+					}
+
+				}
+			}()
+		})
 	}
-
-	warns, err := wasmvm.PopulateImage(mem, cfg, true)
-	assert.Error(t, err)
-	assert.Empty(t, warns)
-	assert.Contains(t, err.Error(), "file entry image is larger than memory file:4 vs mem:3")
-
-	warns, err = wasmvm.PopulateImage(mem, cfg, false)
-	assert.NoError(t, err)
-	assert.Contains(t, warns[0], "file entry image is larger than memory file:4 vs mem:3")
-
-}
-
-func TestPopulateImage_ArrayType(t *testing.T) {
-	mem := make([]byte, 4)
-	cfg := &wasmvm.ImageConfig{
-		Type:  "array",
-		Size:  4,
-		Array: []uint8{1, 2},
-	}
-	warns, err := wasmvm.PopulateImage(mem, cfg, false)
-	assert.NoError(t, err)
-	assert.Empty(t, warns)
-	assert.Equal(t, []byte{1, 2, 0, 0}, mem)
-}
-
-func TestPopulateImage_ArrayType_OOB(t *testing.T) {
-	mem := make([]byte, 4)
-	cfg := &wasmvm.ImageConfig{
-		Type:  "array",
-		Size:  1,
-		Array: []uint8{1, 2},
-	}
-	_, err := wasmvm.PopulateImage(mem, cfg, true)
-	assert.Error(t, err)
-
-	warns, err := wasmvm.PopulateImage(mem, cfg, false)
-	assert.NoError(t, err)
-	assert.Contains(t, warns[0], "array entry larger than size")
-}
-
-func TestPopulateImage_ArrayType_SizeMismatch(t *testing.T) {
-	mem := make([]byte, 4)
-	cfg := &wasmvm.ImageConfig{
-		Type:  "array",
-		Size:  6,
-		Array: []uint8{1, 2},
-	}
-	_, err := wasmvm.PopulateImage(mem, cfg, true)
-	assert.Error(t, err)
-
-	warns, err := wasmvm.PopulateImage(mem, cfg, false)
-	assert.NoError(t, err)
-	assert.Contains(t, warns[0], "array size larger than memory")
-}
-
-func TestPopulateImage_ArrayType_SizeZero(t *testing.T) {
-	mem := make([]byte, 4)
-	cfg := &wasmvm.ImageConfig{
-		Type:  "array",
-		Size:  0,
-		Array: []uint8{1, 2},
-	}
-
-	_, err := wasmvm.PopulateImage(mem, cfg, false)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "array type requires size")
 }
 
 func TestPopulateImage_EmptyType(t *testing.T) {
