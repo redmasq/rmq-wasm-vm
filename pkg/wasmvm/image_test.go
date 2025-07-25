@@ -2,6 +2,7 @@ package wasmvm_test
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"testing"
 
@@ -32,6 +33,14 @@ func (i testType) String() string {
 	return _testType_name[_testType_index[i]:_testType_index[i+1]]
 }
 
+func GetImageErrorType(err error) wasmvm.ImageInitializationErrorType {
+	var imgErr *wasmvm.ImageInitializationError
+	if errors.As(err, &imgErr) {
+		return imgErr.Type
+	}
+	return wasmvm.UndefinedImageError
+}
+
 type imageTestCase struct {
 	name              string
 	tType             testType
@@ -40,6 +49,7 @@ type imageTestCase struct {
 	expectError       bool
 	expertWarns       bool
 	checkErrorType    bool
+	checkErrorCause   bool
 	errorType         *wasmvm.ImageInitializationError
 	errorContains     string
 	warnsContains     string
@@ -100,8 +110,9 @@ func TestPopulateImage(t *testing.T) {
 			memoryContains: nil,
 			checkErrorType: true,
 			errorType: &wasmvm.ImageInitializationError{
-				Type: wasmvm.FileImageOtherError,
-				Msg:  "I/O Error because \"reasons\"",
+				Type:  wasmvm.FileImageOtherError,
+				Msg:   "I/O Error because \"reasons\"", // TODO: Fix the message check
+				Cause: fmt.Errorf("Whatever"),          // Message isn't checked, just type
 			},
 			memorySize: 4,
 			useStrict:  true,
@@ -348,8 +359,12 @@ func TestPopulateImage(t *testing.T) {
 					assert.Error(t, err)
 					assert.Empty(t, warns)
 					if tc.checkErrorType {
-						var imgErr *wasmvm.ImageInitializationError
-						require.ErrorAs(t, err, &imgErr)
+						require.NotEmpty(t, tc.errorType, "Test configuration error, errorType must not be nil")
+						require.ErrorAs(t, err, &tc.errorType)
+						assert.Equal(t, tc.errorType.Type, GetImageErrorType(err))
+						if tc.checkErrorCause {
+							assert.ErrorAs(t, tc.errorType.Cause, tc.errorType.Unwrap().Error())
+						}
 
 					} else if tc.errorContains != "" {
 						assert.Contains(t, err.Error(), tc.errorContains)

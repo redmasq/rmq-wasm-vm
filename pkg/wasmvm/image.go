@@ -23,13 +23,19 @@ const (
 
 // Custom error struct
 type ImageInitializationError struct {
-	Msg  string
-	Type ImageInitializationErrorType
+	Msg   string
+	Type  ImageInitializationErrorType
+	Cause error
 }
 
 // Implement the `error` interface
 func (e *ImageInitializationError) Error() string {
 	return fmt.Sprintf("[%s] %s", e.Type.String(), e.Msg)
+}
+
+// Another from the `error` interface
+func (e *ImageInitializationError) Unwrap() error {
+	return e.Cause
 }
 
 // Constructor helper
@@ -40,8 +46,12 @@ func NewImageInitializationError(t ImageInitializationErrorType, msg string) err
 	}
 }
 
-func NewUndefinedImageError(msg string) error {
-	return NewImageInitializationError(UndefinedImageError, msg)
+func NewImageInitializationErrorWithCause(t ImageInitializationErrorType, msg string, cause error) error {
+	return &ImageInitializationError{
+		Type:  t,
+		Msg:   msg,
+		Cause: cause,
+	}
 }
 
 // Defined so as to allow for mocking
@@ -67,7 +77,7 @@ func PopulateImage(mem []byte, cfg *ImageConfig, strict bool) ([]string, error) 
 	case "file":
 		data, err := ReadFile(cfg.Filename)
 		if err != nil {
-			return warns, err
+			return warns, NewImageInitializationErrorWithCause(FileImageOtherError, "Error while reading image file", err)
 		}
 		if len(data) > len(mem) {
 			if strict {
