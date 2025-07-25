@@ -33,19 +33,22 @@ func (i testType) String() string {
 }
 
 type imageTestCase struct {
-	name           string
-	tType          testType
-	mockReadFile   readFileMock
-	mockArray      []byte
-	expectError    bool
-	expertWarns    bool
-	errorContains  string
-	warnsContains  string
-	memoryContains []byte
-	imageSize      int
-	forceImageSize bool
-	memorySize     int
-	useStrict      bool
+	name              string
+	tType             testType
+	mockReadFile      readFileMock
+	mockArray         []byte
+	expectError       bool
+	expertWarns       bool
+	checkErrorType    bool
+	errorType         *wasmvm.ImageInitializationError
+	errorContains     string
+	warnsContains     string
+	prepopulateMemory []byte
+	memoryContains    []byte
+	imageSize         int
+	forceImageSize    bool
+	memorySize        int
+	useStrict         bool
 }
 
 func TestPopulateImage(t *testing.T) {
@@ -95,9 +98,13 @@ func TestPopulateImage(t *testing.T) {
 			expectError:    true,
 			expertWarns:    false,
 			memoryContains: nil,
-			errorContains:  "I/O Error because \"reasons\"",
-			memorySize:     4,
-			useStrict:      true,
+			checkErrorType: true,
+			errorType: &wasmvm.ImageInitializationError{
+				Type: wasmvm.FileImageOtherError,
+				Msg:  "I/O Error because \"reasons\"",
+			},
+			memorySize: 4,
+			useStrict:  true,
 		},
 		{
 			name:  "warn - oversized file",
@@ -217,6 +224,48 @@ func TestPopulateImage(t *testing.T) {
 			forceImageSize: true,
 			useStrict:      true,
 		},
+		{
+			name:              "success - normal size",
+			tType:             testEmpty,
+			prepopulateMemory: []byte{0xCA, 0xFE, 0xD0, 0x0D},
+			expectError:       false,
+			expertWarns:       false,
+			memoryContains:    []byte{0x00, 0x00, 0x00, 0x00},
+			imageSize:         4,
+			useStrict:         true,
+		},
+		{
+			name:              "success - smaller size",
+			tType:             testEmpty,
+			prepopulateMemory: []byte{0xCA, 0xFE, 0xD0, 0x0D},
+			expectError:       false,
+			expertWarns:       false,
+			memoryContains:    []byte{0x00, 0x00, 0xD0, 0x0D},
+			imageSize:         2,
+			useStrict:         true,
+		},
+		{
+			name:              "warn - larger size",
+			tType:             testEmpty,
+			prepopulateMemory: []byte{0xCA, 0xFE, 0xD0, 0x0D},
+			expectError:       false,
+			expertWarns:       true,
+			memoryContains:    []byte{0x00, 0x00, 0x00, 0x00},
+			warnsContains:     "memory is smaller than image size",
+			imageSize:         6,
+			useStrict:         false,
+		},
+		{
+			name:              "failure - larger size",
+			tType:             testEmpty,
+			prepopulateMemory: []byte{0xCA, 0xFE, 0xD0, 0x0D},
+			expectError:       true,
+			expertWarns:       false,
+			memoryContains:    nil,
+			errorContains:     "memory is smaller than image size",
+			imageSize:         6,
+			useStrict:         true,
+		},
 	}
 
 	for i := range tests {
@@ -224,6 +273,28 @@ func TestPopulateImage(t *testing.T) {
 		name := tc.tType.String() + ": " + tc.name
 		var cfg *wasmvm.ImageConfig = nil
 		var replaceReadFile readFileMock = nil
+		size := uint64(tc.memorySize)
+		/*
+			The lack of a ternary operator actually annoys me about the language
+			I almost made an Excel style if
+			func If[T any](someCondition bool, ifTrue, ifFalse T) T {
+				if someCondition {
+					return ifTrue
+				}
+				return ifFalse
+			}
+
+			and then
+
+			size := uint64(If(tc.imageSize > 0, tc.imageSize, tc.memorySize))
+
+			But that's probably not proper Golang either... Well, assuming
+			that generics can even be used like that
+		*/
+
+		if tc.forceImageSize || tc.imageSize != 0 {
+			size = uint64(tc.imageSize)
+		}
 		t.Run(name, func(t *testing.T) {
 			switch tc.tType {
 			case testFile:
@@ -233,31 +304,15 @@ func TestPopulateImage(t *testing.T) {
 				}
 				replaceReadFile = tc.mockReadFile
 			case testArray:
-				/*
-					The lack of a ternary operator actually annoys me about the language
-					I almost made an Excel style if
-					func If[T any](someCondition bool, ifTrue, ifFalse T) T {
-						if someCondition {
-							return ifTrue
-						}
-						return ifFalse
-					}
-
-					and then
-
-					size := uint64(If(tc.imageSize > 0, tc.imageSize, tc.memorySize))
-
-					But that's probably not proper Golang either... Well, assuming
-					that generics can even be used like that
-				*/
-				size := uint64(tc.memorySize)
-				if tc.forceImageSize || tc.imageSize != 0 {
-					size = uint64(tc.imageSize)
-				}
 				cfg = &wasmvm.ImageConfig{
 					Type:  "array",
 					Size:  size,
 					Array: tc.mockArray,
+				}
+			case testEmpty:
+				cfg = &wasmvm.ImageConfig{
+					Type: "empty",
+					Size: size,
 				}
 			}
 
@@ -279,14 +334,24 @@ func TestPopulateImage(t *testing.T) {
 					wasmvm.ReadFile = replaceReadFile
 				}
 
-				mem := make([]byte, tc.memorySize)
+				var mem []byte
+
+				if tc.prepopulateMemory != nil {
+					mem = tc.prepopulateMemory
+				} else {
+					mem = make([]byte, tc.memorySize)
+				}
 
 				warns, err := wasmvm.PopulateImage(mem, cfg, tc.useStrict)
 
 				if tc.expectError {
 					assert.Error(t, err)
 					assert.Empty(t, warns)
-					if tc.errorContains != "" {
+					if tc.checkErrorType {
+						var imgErr *wasmvm.ImageInitializationError
+						require.ErrorAs(t, err, &imgErr)
+
+					} else if tc.errorContains != "" {
 						assert.Contains(t, err.Error(), tc.errorContains)
 					}
 

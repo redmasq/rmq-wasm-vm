@@ -7,6 +7,43 @@ import (
 	"os"
 )
 
+//go:generate stringer -type=ImageInitializationErrorType
+type ImageInitializationErrorType byte
+
+const (
+	UndefinedImageError ImageInitializationErrorType = iota
+	UnknownImageType
+	FileImageOtherError
+	ImageSizeRequired
+	ImageSizeTooLargeForConfig
+	ImageSizeTooLargeForMemory
+	SparseEntryOutOfBounds
+	SparseEntryMemoryOverwrite
+)
+
+// Custom error struct
+type ImageInitializationError struct {
+	Msg  string
+	Type ImageInitializationErrorType
+}
+
+// Implement the `error` interface
+func (e *ImageInitializationError) Error() string {
+	return fmt.Sprintf("[%s] %s", e.Type.String(), e.Msg)
+}
+
+// Constructor helper
+func NewImageInitializationError(t ImageInitializationErrorType, msg string) error {
+	return &ImageInitializationError{
+		Type: t,
+		Msg:  msg,
+	}
+}
+
+func NewUndefinedImageError(msg string) error {
+	return NewImageInitializationError(UndefinedImageError, msg)
+}
+
 // Defined so as to allow for mocking
 var ReadFile = os.ReadFile
 
@@ -62,6 +99,12 @@ func PopulateImage(mem []byte, cfg *ImageConfig, strict bool) ([]string, error) 
 	case "empty":
 		if cfg.Size == 0 {
 			return warns, errors.New("empty type requires size")
+		}
+		if cfg.Size > uint64(len(mem)) {
+			if strict {
+				return warns, fmt.Errorf("memory is smaller than image size")
+			}
+			warns = append(warns, "memory is smaller than image size")
 		}
 		for i := uint64(0); i < cfg.Size && i < uint64(len(mem)); i++ {
 			mem[i] = 0x00
