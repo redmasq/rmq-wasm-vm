@@ -41,6 +41,14 @@ func GetImageErrorType(err error) wasmvm.ImageInitializationErrorType {
 	return wasmvm.UndefinedImageError
 }
 
+func GetImageErrorMessage(err error) string {
+	var imgErr *wasmvm.ImageInitializationError
+	if errors.As(err, &imgErr) {
+		return imgErr.Msg
+	}
+	return "" // I wonder if I should make this err.String()
+}
+
 type imageTestCase struct {
 	name              string
 	tType             testType
@@ -49,7 +57,9 @@ type imageTestCase struct {
 	expectError       bool
 	expertWarns       bool
 	checkErrorType    bool
+	checkErrorMessage bool
 	checkErrorCause   bool
+	checkCauseString  bool
 	errorType         *wasmvm.ImageInitializationError
 	errorContains     string
 	warnsContains     string
@@ -105,14 +115,17 @@ func TestPopulateImage(t *testing.T) {
 			mockReadFile: func(string) ([]byte, error) {
 				return nil, errors.New("I/O Error because \"reasons\"")
 			},
-			expectError:    true,
-			expertWarns:    false,
-			memoryContains: nil,
-			checkErrorType: true,
+			expectError:       true,
+			expertWarns:       false,
+			memoryContains:    nil,
+			checkErrorType:    true,
+			checkErrorMessage: true,
+			checkErrorCause:   true,
+			checkCauseString:  true,
 			errorType: &wasmvm.ImageInitializationError{
 				Type:  wasmvm.FileImageOtherError,
-				Msg:   "I/O Error because \"reasons\"", // TODO: Fix the message check
-				Cause: fmt.Errorf("Whatever"),          // Message isn't checked, just type
+				Msg:   "Error while reading image file",
+				Cause: fmt.Errorf("I/O Error because \"reasons\""),
 			},
 			memorySize: 4,
 			useStrict:  true,
@@ -360,10 +373,19 @@ func TestPopulateImage(t *testing.T) {
 					assert.Empty(t, warns)
 					if tc.checkErrorType {
 						require.NotEmpty(t, tc.errorType, "Test configuration error, errorType must not be nil")
-						require.ErrorAs(t, err, &tc.errorType)
+						require.IsType(t, err, tc.errorType) // Not checking the chain since we are breaking into steps
+
 						assert.Equal(t, tc.errorType.Type, GetImageErrorType(err))
+						if tc.checkErrorMessage {
+							assert.Contains(t, GetImageErrorMessage(err), GetImageErrorMessage(tc.errorType))
+						}
 						if tc.checkErrorCause {
-							assert.ErrorAs(t, tc.errorType.Cause, tc.errorType.Unwrap().Error())
+							err2 := errors.Unwrap(err)
+							errCmp := errors.Unwrap(tc.errorType)
+							assert.IsType(t, errCmp, err2)
+							if tc.checkCauseString {
+								assert.Contains(t, err2.Error(), errCmp.Error())
+							}
 						}
 
 					} else if tc.errorContains != "" {
