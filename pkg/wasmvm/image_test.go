@@ -11,9 +11,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// For the struct to define the function signature
 type readFileMock func(string) ([]byte, error)
+
+// enum for the test type
 type testType int8
 
+// And we autonumber it
 const (
 	testFile testType = iota
 	testArray
@@ -22,17 +26,29 @@ const (
 	testOther
 )
 
+// This will for any of the defined const above
+// be the source for a splice
 const _testType_name = "testFiletestArraytestSparsetestEmptytestOther"
 
+// map of boundary locations
 var _testType_index = [...]uint8{0, 8, 17, 27, 36, 45}
 
+// Basically, what's the highest index on the map
+const _testType_indexlimit = testType(len(_testType_index) - 1)
+
+// prints for defined values just the name from
+// the string above, spliced out, otherwise, the
+// type name with the integer value
+// mimicked from the go generate since I didn't want
+// to generate for a private type
 func (i testType) String() string {
-	if i < 0 || i >= testType(len(_testType_index)-1) {
+	if i < 0 || i >= _testType_indexlimit {
 		return "testType(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
-	return _testType_name[_testType_index[i]:_testType_index[i+1]]
+	return _testType_name[_testType_index[i]:_testType_index[i+1]] // Splice
 }
 
+// Helper functions for getting values
 func GetImageErrorType(err error) wasmvm.ImageInitializationErrorType {
 	var imgErr *wasmvm.ImageInitializationError
 	if errors.As(err, &imgErr) {
@@ -46,9 +62,10 @@ func GetImageErrorMessage(err error) string {
 	if errors.As(err, &imgErr) {
 		return imgErr.Msg
 	}
-	return "" // I wonder if I should make this err.String()
+	return err.Error()
 }
 
+// Configuration struct itself
 type imageTestCase struct {
 	name              string
 	tType             testType
@@ -320,25 +337,7 @@ func TestPopulateImage(t *testing.T) {
 			size = uint64(tc.imageSize)
 		}
 		t.Run(name, func(t *testing.T) {
-			switch tc.tType {
-			case testFile:
-				cfg = &wasmvm.ImageConfig{
-					Type:     "file",
-					Filename: "fake.file",
-				}
-				replaceReadFile = tc.mockReadFile
-			case testArray:
-				cfg = &wasmvm.ImageConfig{
-					Type:  "array",
-					Size:  size,
-					Array: tc.mockArray,
-				}
-			case testEmpty:
-				cfg = &wasmvm.ImageConfig{
-					Type: "empty",
-					Size: size,
-				}
-			}
+			cfg, replaceReadFile = prepareConfigForTest(tc, cfg, replaceReadFile, size)
 
 			// idea borrowed technically from JavaScript
 			// Self-executing function/closure. In this case
@@ -369,28 +368,7 @@ func TestPopulateImage(t *testing.T) {
 				warns, err := wasmvm.PopulateImage(mem, cfg, tc.useStrict)
 
 				if tc.expectError {
-					assert.Error(t, err)
-					assert.Empty(t, warns)
-					if tc.checkErrorType {
-						require.NotEmpty(t, tc.errorType, "Test configuration error, errorType must not be nil")
-						require.IsType(t, err, tc.errorType) // Not checking the chain since we are breaking into steps
-
-						assert.Equal(t, tc.errorType.Type, GetImageErrorType(err))
-						if tc.checkErrorMessage {
-							assert.Contains(t, GetImageErrorMessage(err), GetImageErrorMessage(tc.errorType))
-						}
-						if tc.checkErrorCause {
-							err2 := errors.Unwrap(err)
-							errCmp := errors.Unwrap(tc.errorType)
-							assert.IsType(t, errCmp, err2)
-							if tc.checkCauseString {
-								assert.Contains(t, err2.Error(), errCmp.Error())
-							}
-						}
-
-					} else if tc.errorContains != "" {
-						assert.Contains(t, err.Error(), tc.errorContains)
-					}
+					processTestExpectError(t, err, warns, tc)
 
 				} else {
 					assert.NoError(t, err)
@@ -410,6 +388,55 @@ func TestPopulateImage(t *testing.T) {
 			}()
 		})
 	}
+}
+
+// Extracted function for handling the error condition
+func processTestExpectError(t *testing.T, err error, warns []string, tc imageTestCase) {
+	assert.Error(t, err)
+	assert.Empty(t, warns)
+	if tc.checkErrorType {
+		require.NotEmpty(t, tc.errorType, "Test configuration error, errorType must not be nil")
+		require.IsType(t, err, tc.errorType) // Not checking the chain since we are breaking into steps
+
+		assert.Equal(t, tc.errorType.Type, GetImageErrorType(err))
+		if tc.checkErrorMessage {
+			assert.Contains(t, GetImageErrorMessage(err), GetImageErrorMessage(tc.errorType))
+		}
+		if tc.checkErrorCause {
+			err2 := errors.Unwrap(err)
+			errCmp := errors.Unwrap(tc.errorType)
+			assert.IsType(t, errCmp, err2)
+			if tc.checkCauseString {
+				assert.Contains(t, err2.Error(), errCmp.Error())
+			}
+		}
+
+	} else if tc.errorContains != "" {
+		assert.Contains(t, err.Error(), tc.errorContains)
+	}
+}
+
+func prepareConfigForTest(tc imageTestCase, cfg *wasmvm.ImageConfig, replaceReadFile readFileMock, size uint64) (*wasmvm.ImageConfig, readFileMock) {
+	switch tc.tType {
+	case testFile:
+		cfg = &wasmvm.ImageConfig{
+			Type:     "file",
+			Filename: "fake.file",
+		}
+		replaceReadFile = tc.mockReadFile
+	case testArray:
+		cfg = &wasmvm.ImageConfig{
+			Type:  "array",
+			Size:  size,
+			Array: tc.mockArray,
+		}
+	case testEmpty:
+		cfg = &wasmvm.ImageConfig{
+			Type: "empty",
+			Size: size,
+		}
+	}
+	return cfg, replaceReadFile
 }
 
 func TestPopulateImage_EmptyType(t *testing.T) {

@@ -23,9 +23,9 @@ const (
 
 // Custom error struct
 type ImageInitializationError struct {
-	Msg   string
-	Type  ImageInitializationErrorType
-	Cause error
+	Msg   string                       `json:"message"`
+	Type  ImageInitializationErrorType `json:"type"`
+	Cause error                        `json:"cause,omitempty"`
 }
 
 // Implement the `error` interface
@@ -36,6 +36,17 @@ func (e *ImageInitializationError) Error() string {
 // Another from the `error` interface
 func (e *ImageInitializationError) Unwrap() error {
 	return e.Cause
+}
+
+func (e *ImageInitializationError) MarshalJSON() ([]byte, error) {
+	type Dummy ImageInitializationError
+	return json.Marshal(&struct {
+		Type string `json:"type"` // override only this
+		*Dummy
+	}{
+		Type:  e.Type.String(),
+		Dummy: (*Dummy)(e), // ← actually using the alias
+	})
 }
 
 // Constructor helper
