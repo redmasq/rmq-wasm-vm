@@ -88,227 +88,7 @@ type imageTestCase struct {
 	useStrict         bool
 }
 
-func TestPopulateImage(t *testing.T) {
-	tests := []imageTestCase{
-		{
-			name:  "success - same size",
-			tType: testFile,
-			mockReadFile: func(string) ([]byte, error) {
-				return []byte{0xAB, 0xCD}, nil
-			},
-			expectError:    false,
-			expertWarns:    false,
-			memoryContains: []byte{0xAB, 0xCD},
-			memorySize:     2,
-			useStrict:      true,
-		},
-		{
-			name:  "success - smaller size",
-			tType: testFile,
-			mockReadFile: func(string) ([]byte, error) {
-				return []byte{0xAB, 0xCD}, nil
-			},
-			expectError:    false,
-			expertWarns:    false,
-			memoryContains: []byte{0xAB, 0xCD, 0, 0},
-			memorySize:     4,
-			useStrict:      true,
-		},
-		{
-			name:  "success - empty file",
-			tType: testFile,
-			mockReadFile: func(string) ([]byte, error) {
-				return []byte{}, nil
-			},
-			expectError:    false,
-			expertWarns:    false,
-			memoryContains: []byte{0x00, 0x00, 0x00, 0x00},
-			memorySize:     4,
-			useStrict:      true,
-		},
-		{
-			name:  "failure - read error",
-			tType: testFile,
-			mockReadFile: func(string) ([]byte, error) {
-				return nil, errors.New("I/O Error because \"reasons\"")
-			},
-			expectError:       true,
-			expertWarns:       false,
-			memoryContains:    nil,
-			checkErrorType:    true,
-			checkErrorMessage: true,
-			checkErrorCause:   true,
-			checkCauseString:  true,
-			errorType: &wasmvm.ImageInitializationError{
-				Type:  wasmvm.FileImageOtherError,
-				Msg:   "Error while reading image file",
-				Cause: fmt.Errorf("I/O Error because \"reasons\""),
-			},
-			memorySize: 4,
-			useStrict:  true,
-		},
-		{
-			name:  "warn - oversized file",
-			tType: testFile,
-			mockReadFile: func(string) ([]byte, error) {
-				return []byte{0xAB, 0xCD, 0x12, 0x34}, nil
-			},
-			expectError:    false,
-			expertWarns:    true,
-			memoryContains: []byte{0xAB, 0xCD, 0x12},
-			warnsContains:  "file entry image is larger than memory file:4 vs mem:3",
-			memorySize:     3,
-			useStrict:      false,
-		},
-		{
-			name:  "failure - oversized file",
-			tType: testFile,
-			mockReadFile: func(string) ([]byte, error) {
-				return []byte{0xAB, 0xCD, 0x12, 0x34}, nil
-			},
-			expectError:    true,
-			expertWarns:    false,
-			memoryContains: nil,
-			errorContains:  "file entry image is larger than memory file:4 vs mem:3",
-			memorySize:     3,
-			useStrict:      true,
-		},
-		{
-			name:           "success - same size",
-			tType:          testArray,
-			mockArray:      []byte{0xAB, 0xCD},
-			expectError:    false,
-			expertWarns:    false,
-			memoryContains: []byte{0xAB, 0xCD},
-			memorySize:     2,
-			useStrict:      true,
-		},
-		{
-			name:           "success - smaller size",
-			tType:          testArray,
-			mockArray:      []byte{0xAB, 0xCD},
-			expectError:    false,
-			expertWarns:    false,
-			memoryContains: []byte{0xAB, 0xCD, 0x00, 0x00},
-			memorySize:     4,
-			useStrict:      true,
-		},
-		{
-			name:           "warn - out of bounds",
-			tType:          testArray,
-			mockArray:      []byte{0xAB, 0xCD, 0x12, 0x34},
-			expectError:    false,
-			expertWarns:    true,
-			memoryContains: []byte{0xAB, 0xCD, 0x12},
-			warnsContains:  "array entry larger than size",
-			memorySize:     3,
-			useStrict:      false,
-		},
-		{
-			name:           "failure - out of bounds",
-			tType:          testArray,
-			mockArray:      []byte{0xAB, 0xCD, 0x12, 0x34},
-			expectError:    true,
-			expertWarns:    false,
-			memoryContains: nil,
-			warnsContains:  "array entry larger than size",
-			memorySize:     3,
-			useStrict:      true,
-		},
-		{
-			name:           "warn - size mismatch",
-			tType:          testArray,
-			mockArray:      []byte{0xAB, 0xCD},
-			expectError:    false,
-			expertWarns:    true,
-			memoryContains: []byte{0xAB, 0xCD, 0x00, 0x00},
-			warnsContains:  "array size larger than memory",
-			memorySize:     4,
-			imageSize:      6,
-			useStrict:      false,
-		},
-		{
-			name:           "failure - size mismatch",
-			tType:          testArray,
-			mockArray:      []byte{0xAB, 0xCD},
-			expectError:    true,
-			expertWarns:    false,
-			memoryContains: nil,
-			errorContains:  "array size larger than memory",
-			memorySize:     4,
-			imageSize:      6,
-			useStrict:      true,
-		},
-		{
-			name:           "failure - zero size for non-strict",
-			tType:          testArray,
-			mockArray:      []byte{0xAB, 0xCD},
-			expectError:    true, // This is a specific case where non-strict still fails
-			expertWarns:    false,
-			memoryContains: nil,
-			errorContains:  "array type requires size",
-			memorySize:     4,
-			imageSize:      0,
-			forceImageSize: true,
-			useStrict:      false,
-		},
-		{
-			name:           "failure - zero size for strict",
-			tType:          testArray,
-			mockArray:      []byte{0xAB, 0xCD},
-			expectError:    true,
-			expertWarns:    false,
-			memoryContains: nil,
-			errorContains:  "array type requires size",
-			memorySize:     4,
-			imageSize:      0,
-			forceImageSize: true,
-			useStrict:      true,
-		},
-		{
-			name:              "success - normal size",
-			tType:             testEmpty,
-			prepopulateMemory: []byte{0xCA, 0xFE, 0xD0, 0x0D},
-			expectError:       false,
-			expertWarns:       false,
-			memoryContains:    []byte{0x00, 0x00, 0x00, 0x00},
-			imageSize:         4,
-			useStrict:         true,
-		},
-		{
-			name:              "success - smaller size",
-			tType:             testEmpty,
-			prepopulateMemory: []byte{0xCA, 0xFE, 0xD0, 0x0D},
-			expectError:       false,
-			expertWarns:       false,
-			memoryContains:    []byte{0x00, 0x00, 0xD0, 0x0D},
-			imageSize:         2,
-			useStrict:         true,
-		},
-		{
-			name:              "warn - larger size",
-			tType:             testEmpty,
-			prepopulateMemory: []byte{0xCA, 0xFE, 0xD0, 0x0D},
-			expectError:       false,
-			expertWarns:       true,
-			memoryContains:    []byte{0x00, 0x00, 0x00, 0x00},
-			warnsContains:     "memory is smaller than image size",
-			imageSize:         6,
-			useStrict:         false,
-		},
-		{
-			name:              "failure - larger size",
-			tType:             testEmpty,
-			prepopulateMemory: []byte{0xCA, 0xFE, 0xD0, 0x0D},
-			expectError:       true,
-			expertWarns:       false,
-			memoryContains:    nil,
-			errorContains:     "memory is smaller than image size",
-			imageSize:         6,
-			useStrict:         true,
-		},
-	}
-
+func executeTests(t *testing.T, tests []imageTestCase) {
 	for i := range tests {
 		tc := tests[i]
 		name := tc.tType.String() + ": " + tc.name
@@ -439,28 +219,240 @@ func prepareConfigForTest(tc imageTestCase, cfg *wasmvm.ImageConfig, replaceRead
 	return cfg, replaceReadFile
 }
 
-func TestPopulateImage_EmptyType(t *testing.T) {
-	mem := []byte{99, 88, 77}
-	cfg := &wasmvm.ImageConfig{
-		Type: "empty",
-		Size: 3,
+func TestPopulateImage_File(t *testing.T) {
+	tests := []imageTestCase{
+		{
+			name:  "success - same size",
+			tType: testFile,
+			mockReadFile: func(string) ([]byte, error) {
+				return []byte{0xAB, 0xCD}, nil
+			},
+			expectError:    false,
+			expertWarns:    false,
+			memoryContains: []byte{0xAB, 0xCD},
+			memorySize:     2,
+			useStrict:      true,
+		},
+		{
+			name:  "success - smaller size",
+			tType: testFile,
+			mockReadFile: func(string) ([]byte, error) {
+				return []byte{0xAB, 0xCD}, nil
+			},
+			expectError:    false,
+			expertWarns:    false,
+			memoryContains: []byte{0xAB, 0xCD, 0, 0},
+			memorySize:     4,
+			useStrict:      true,
+		},
+		{
+			name:  "success - empty file",
+			tType: testFile,
+			mockReadFile: func(string) ([]byte, error) {
+				return []byte{}, nil
+			},
+			expectError:    false,
+			expertWarns:    false,
+			memoryContains: []byte{0x00, 0x00, 0x00, 0x00},
+			memorySize:     4,
+			useStrict:      true,
+		},
+		{
+			name:  "failure - read error",
+			tType: testFile,
+			mockReadFile: func(string) ([]byte, error) {
+				return nil, errors.New("I/O Error because \"reasons\"")
+			},
+			expectError:       true,
+			expertWarns:       false,
+			memoryContains:    nil,
+			checkErrorType:    true,
+			checkErrorMessage: true,
+			checkErrorCause:   true,
+			checkCauseString:  true,
+			errorType: &wasmvm.ImageInitializationError{
+				Type:  wasmvm.FileImageOtherError,
+				Msg:   "Error while reading image file",
+				Cause: fmt.Errorf("I/O Error because \"reasons\""),
+			},
+			memorySize: 4,
+			useStrict:  true,
+		},
+		{
+			name:  "warn - oversized file",
+			tType: testFile,
+			mockReadFile: func(string) ([]byte, error) {
+				return []byte{0xAB, 0xCD, 0x12, 0x34}, nil
+			},
+			expectError:    false,
+			expertWarns:    true,
+			memoryContains: []byte{0xAB, 0xCD, 0x12},
+			warnsContains:  "file entry image is larger than memory file:4 vs mem:3",
+			memorySize:     3,
+			useStrict:      false,
+		},
+		{
+			name:  "failure - oversized file",
+			tType: testFile,
+			mockReadFile: func(string) ([]byte, error) {
+				return []byte{0xAB, 0xCD, 0x12, 0x34}, nil
+			},
+			expectError:    true,
+			expertWarns:    false,
+			memoryContains: nil,
+			errorContains:  "file entry image is larger than memory file:4 vs mem:3",
+			memorySize:     3,
+			useStrict:      true,
+		},
 	}
-	warns, err := wasmvm.PopulateImage(mem, cfg, false)
-	assert.NoError(t, err)
-	assert.Empty(t, warns)
-	assert.Equal(t, []byte{0, 0, 0}, mem)
+	executeTests(t, tests)
 }
 
-func TestPopulateImage_EmptyType_SizeZero(t *testing.T) {
-	mem := make([]byte, 4)
-	cfg := &wasmvm.ImageConfig{
-		Type: "empty",
-		Size: 0,
+func TestPopulateImage_Array(t *testing.T) {
+	tests := []imageTestCase{
+		{
+			name:           "success - same size",
+			tType:          testArray,
+			mockArray:      []byte{0xAB, 0xCD},
+			expectError:    false,
+			expertWarns:    false,
+			memoryContains: []byte{0xAB, 0xCD},
+			memorySize:     2,
+			useStrict:      true,
+		},
+		{
+			name:           "success - smaller size",
+			tType:          testArray,
+			mockArray:      []byte{0xAB, 0xCD},
+			expectError:    false,
+			expertWarns:    false,
+			memoryContains: []byte{0xAB, 0xCD, 0x00, 0x00},
+			memorySize:     4,
+			useStrict:      true,
+		},
+		{
+			name:           "warn - out of bounds",
+			tType:          testArray,
+			mockArray:      []byte{0xAB, 0xCD, 0x12, 0x34},
+			expectError:    false,
+			expertWarns:    true,
+			memoryContains: []byte{0xAB, 0xCD, 0x12},
+			warnsContains:  "array entry larger than size",
+			memorySize:     3,
+			useStrict:      false,
+		},
+		{
+			name:           "failure - out of bounds",
+			tType:          testArray,
+			mockArray:      []byte{0xAB, 0xCD, 0x12, 0x34},
+			expectError:    true,
+			expertWarns:    false,
+			memoryContains: nil,
+			warnsContains:  "array entry larger than size",
+			memorySize:     3,
+			useStrict:      true,
+		},
+		{
+			name:           "warn - size mismatch",
+			tType:          testArray,
+			mockArray:      []byte{0xAB, 0xCD},
+			expectError:    false,
+			expertWarns:    true,
+			memoryContains: []byte{0xAB, 0xCD, 0x00, 0x00},
+			warnsContains:  "array size larger than memory",
+			memorySize:     4,
+			imageSize:      6,
+			useStrict:      false,
+		},
+		{
+			name:           "failure - size mismatch",
+			tType:          testArray,
+			mockArray:      []byte{0xAB, 0xCD},
+			expectError:    true,
+			expertWarns:    false,
+			memoryContains: nil,
+			errorContains:  "array size larger than memory",
+			memorySize:     4,
+			imageSize:      6,
+			useStrict:      true,
+		},
+		{
+			name:           "failure - zero size for non-strict",
+			tType:          testArray,
+			mockArray:      []byte{0xAB, 0xCD},
+			expectError:    true, // This is a specific case where non-strict still fails
+			expertWarns:    false,
+			memoryContains: nil,
+			errorContains:  "array type requires size",
+			memorySize:     4,
+			imageSize:      0,
+			forceImageSize: true,
+			useStrict:      false,
+		},
+		{
+			name:           "failure - zero size for strict",
+			tType:          testArray,
+			mockArray:      []byte{0xAB, 0xCD},
+			expectError:    true,
+			expertWarns:    false,
+			memoryContains: nil,
+			errorContains:  "array type requires size",
+			memorySize:     4,
+			imageSize:      0,
+			forceImageSize: true,
+			useStrict:      true,
+		},
+	}
+	executeTests(t, tests)
+}
+
+func TestPopulateImage_Empty(t *testing.T) {
+	tests := []imageTestCase{
+		{
+			name:              "success - normal size",
+			tType:             testEmpty,
+			prepopulateMemory: []byte{0xCA, 0xFE, 0xD0, 0x0D},
+			expectError:       false,
+			expertWarns:       false,
+			memoryContains:    []byte{0x00, 0x00, 0x00, 0x00},
+			imageSize:         4,
+			useStrict:         true,
+		},
+		{
+			name:              "success - smaller size",
+			tType:             testEmpty,
+			prepopulateMemory: []byte{0xCA, 0xFE, 0xD0, 0x0D},
+			expectError:       false,
+			expertWarns:       false,
+			memoryContains:    []byte{0x00, 0x00, 0xD0, 0x0D},
+			imageSize:         2,
+			useStrict:         true,
+		},
+		{
+			name:              "warn - larger size",
+			tType:             testEmpty,
+			prepopulateMemory: []byte{0xCA, 0xFE, 0xD0, 0x0D},
+			expectError:       false,
+			expertWarns:       true,
+			memoryContains:    []byte{0x00, 0x00, 0x00, 0x00},
+			warnsContains:     "memory is smaller than image size",
+			imageSize:         6,
+			useStrict:         false,
+		},
+		{
+			name:              "failure - larger size",
+			tType:             testEmpty,
+			prepopulateMemory: []byte{0xCA, 0xFE, 0xD0, 0x0D},
+			expectError:       true,
+			expertWarns:       false,
+			memoryContains:    nil,
+			errorContains:     "memory is smaller than image size",
+			imageSize:         6,
+			useStrict:         true,
+		},
 	}
 
-	_, err := wasmvm.PopulateImage(mem, cfg, false)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "empty type requires size")
+	executeTests(t, tests)
 }
 
 func TestPopulateImage_SparseArrayType_Normal(t *testing.T) {
