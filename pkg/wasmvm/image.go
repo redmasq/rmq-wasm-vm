@@ -26,6 +26,7 @@ type ImageInitializationError struct {
 	Msg   string                       `json:"message"`
 	Type  ImageInitializationErrorType `json:"type"`
 	Cause error                        `json:"cause,omitempty"`
+	Meta  any                          `json:"metadata,omitempty"`
 }
 
 // Implement the `error` interface
@@ -36,6 +37,16 @@ func (e *ImageInitializationError) Error() string {
 // Another from the `error` interface
 func (e *ImageInitializationError) Unwrap() error {
 	return e.Cause
+}
+
+func (e *ImageInitializationError) ApplyCause(err error) *ImageInitializationError {
+	e.Cause = err
+	return e
+}
+
+func (e *ImageInitializationError) ApplyMeta(meta any) *ImageInitializationError {
+	e.Meta = meta
+	return e
 }
 
 func (e *ImageInitializationError) MarshalJSON() ([]byte, error) {
@@ -81,6 +92,12 @@ type SparseArrayEntry struct {
 	Array  []uint8 `json:"array"`
 }
 
+type FileErrorMetaData struct {
+	Filename string `json:"filename,omitempty"`
+	DataSize uint64 `json:"dataSize"`
+	MemSize  uint64 `json:"memSize"`
+}
+
 // PopulateImage fills mem according to config; returns warnings and error if any
 func PopulateImage(mem []byte, cfg *ImageConfig, strict bool) ([]string, error) {
 	warns := []string{}
@@ -92,7 +109,17 @@ func PopulateImage(mem []byte, cfg *ImageConfig, strict bool) ([]string, error) 
 		}
 		if len(data) > len(mem) {
 			if strict {
-				return warns, fmt.Errorf("file entry image is larger than memory file:%d vs mem:%d", len(data), len(mem))
+				ferr := NewImageInitializationError(ImageSizeTooLargeForMemory,
+					fmt.Sprintf("file entry image is larger than memory file:%d vs mem:%d", len(data), len(mem)))
+				if bldErr, ok := ferr.(*ImageInitializationError); ok {
+					bldErr.ApplyMeta(FileErrorMetaData{
+						Filename: cfg.Filename,
+						DataSize: uint64(len(data)),
+						MemSize:  uint64(len(mem)),
+					})
+				}
+
+				return warns, ferr
 			}
 			warns = append(warns, fmt.Sprintf("file entry image is larger than memory file:%d vs mem:%d", len(data), len(mem)))
 		}

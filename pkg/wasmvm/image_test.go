@@ -297,12 +297,22 @@ func TestPopulateImage_File(t *testing.T) {
 			mockReadFile: func(string) ([]byte, error) {
 				return []byte{0xAB, 0xCD, 0x12, 0x34}, nil
 			},
-			expectError:    true,
-			expertWarns:    false,
-			memoryContains: nil,
-			errorContains:  "file entry image is larger than memory file:4 vs mem:3",
-			memorySize:     3,
-			useStrict:      true,
+			expectError:       true,
+			expertWarns:       false,
+			memoryContains:    nil,
+			checkErrorType:    true,
+			checkErrorMessage: true,
+			errorType: &wasmvm.ImageInitializationError{
+				Type: wasmvm.ImageSizeTooLargeForMemory,
+				Msg:  "file entry image is larger than memory file:4 vs mem:3",
+				Meta: wasmvm.FileErrorMetaData{
+					Filename: "fake.dat",
+					DataSize: uint64(4),
+					MemSize:  uint64(3),
+				},
+			},
+			memorySize: 3,
+			useStrict:  true,
 		},
 	}
 	executeTests(t, tests)
