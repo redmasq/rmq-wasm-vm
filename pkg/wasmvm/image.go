@@ -121,12 +121,21 @@ func PopulateImage(mem []byte, cfg *ImageConfig, strict bool) ([]string, error) 
 
 				return warns, ferr
 			}
+			// For now, we are keeping warns as just strings
 			warns = append(warns, fmt.Sprintf("file entry image is larger than memory file:%d vs mem:%d", len(data), len(mem)))
 		}
 		copy(mem, data)
 	case "array":
 		if cfg.Size == 0 {
-			return warns, errors.New("array type requires size")
+			ferr := NewImageInitializationError(ImageSizeRequired, "array type requires size")
+			if bldErr, ok := ferr.(*ImageInitializationError); ok {
+				bldErr.ApplyMeta(FileErrorMetaData{
+					Filename: cfg.Filename,
+					DataSize: uint64(0),
+					MemSize:  uint64(len(mem)),
+				})
+			}
+			return warns, NewImageInitializationError(ImageSizeRequired, "array type requires size")
 		}
 		if cfg.Size > uint64(len(mem)) {
 			if strict {

@@ -381,19 +381,30 @@ func TestPopulateImage_Array(t *testing.T) {
 			expectError:    true,
 			expertWarns:    false,
 			memoryContains: nil,
+			checkErrorType: false,
 			errorContains:  "array size larger than memory",
 			memorySize:     4,
 			imageSize:      6,
 			useStrict:      true,
 		},
 		{
-			name:           "failure - zero size for non-strict",
-			tType:          testArray,
-			mockArray:      []byte{0xAB, 0xCD},
-			expectError:    true, // This is a specific case where non-strict still fails
-			expertWarns:    false,
-			memoryContains: nil,
-			errorContains:  "array type requires size",
+			name:              "failure - zero size for non-strict",
+			tType:             testArray,
+			mockArray:         []byte{0xAB, 0xCD},
+			expectError:       true, // This is a specific case where non-strict still fails
+			expertWarns:       false,
+			memoryContains:    nil,
+			checkErrorType:    true, // TODO: convert this test
+			checkErrorMessage: true,
+			errorType: &wasmvm.ImageInitializationError{
+				Type: wasmvm.ImageSizeRequired,
+				Msg:  "array type requires size",
+				Meta: wasmvm.FileErrorMetaData{
+					Filename: "fake.dat",
+					DataSize: uint64(0),
+					MemSize:  uint64(4),
+				},
+			},
 			memorySize:     4,
 			imageSize:      0,
 			forceImageSize: true,
