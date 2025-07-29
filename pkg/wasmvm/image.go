@@ -2,7 +2,6 @@ package wasmvm
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 )
@@ -17,6 +16,7 @@ const (
 	ImageSizeRequired
 	ImageSizeTooLargeForConfig
 	ImageSizeTooLargeForMemory
+	ImageInitArrayLargerThanConfig
 	SparseEntryOutOfBounds
 	SparseEntryMemoryOverwrite
 )
@@ -39,16 +39,20 @@ func (e *ImageInitializationError) Unwrap() error {
 	return e.Cause
 }
 
+/*
 func (e *ImageInitializationError) ApplyCause(err error) *ImageInitializationError {
 	e.Cause = err
 	return e
 }
+
+*/
 
 func (e *ImageInitializationError) ApplyMeta(meta any) *ImageInitializationError {
 	e.Meta = meta
 	return e
 }
 
+/*
 func (e *ImageInitializationError) MarshalJSON() ([]byte, error) {
 	type Dummy ImageInitializationError
 	return json.Marshal(&struct {
@@ -59,6 +63,7 @@ func (e *ImageInitializationError) MarshalJSON() ([]byte, error) {
 		Dummy: (*Dummy)(e), // ← actually using the alias
 	})
 }
+*/
 
 // Constructor helper
 func NewImageInitializationError(t ImageInitializationErrorType, msg string) error {
@@ -92,80 +97,34 @@ type SparseArrayEntry struct {
 	Array  []uint8 `json:"array"`
 }
 
-type FileErrorMetaData struct {
-	Filename string `json:"filename,omitempty"`
-	DataSize uint64 `json:"dataSize"`
-	MemSize  uint64 `json:"memSize"`
+type ImageErrorMetaData struct {
+	Filename   string `json:"filename,omitempty"`
+	DataSize   uint64 `json:"dataSize"`
+	ConfigSize uint64 `json:"configSize"`
+	MemSize    uint64 `json:"memSize"`
 }
+
+const errmsg_ReadingFile = "Error while reading image file"
+const errmsg_FileLargerMemory = "file entry image is larger than memory file:%d vs mem:%d"
+const errmsg_ArrayRequiresSize = "array type requires size"
+const errmsg_ArrayLargerMemory = "array configured size larger than memory"
+const errmsg_ArrayLargerSize = "array entry larger than size"
+const errmsg_EmptyRequireSize = "empty type requires size"
+const errmsg_EmptyMemorySmallerThanSize = "memory is smaller than image size"
 
 // PopulateImage fills mem according to config; returns warnings and error if any
 func PopulateImage(mem []byte, cfg *ImageConfig, strict bool) ([]string, error) {
 	warns := []string{}
 	switch cfg.Type {
 	case "file":
-		data, err := ReadFile(cfg.Filename)
-		if err != nil {
-			return warns, NewImageInitializationErrorWithCause(FileImageOtherError, "Error while reading image file", err)
-		}
-		if len(data) > len(mem) {
-			if strict {
-				ferr := NewImageInitializationError(ImageSizeTooLargeForMemory,
-					fmt.Sprintf("file entry image is larger than memory file:%d vs mem:%d", len(data), len(mem)))
-				if bldErr, ok := ferr.(*ImageInitializationError); ok {
-					bldErr.ApplyMeta(FileErrorMetaData{
-						Filename: cfg.Filename,
-						DataSize: uint64(len(data)),
-						MemSize:  uint64(len(mem)),
-					})
-				}
-
-				return warns, ferr
-			}
-			// For now, we are keeping warns as just strings
-			warns = append(warns, fmt.Sprintf("file entry image is larger than memory file:%d vs mem:%d", len(data), len(mem)))
-		}
-		copy(mem, data)
+		warns, err := handleFile(cfg, warns, mem, strict)
+		return warns, err
 	case "array":
-		if cfg.Size == 0 {
-			ferr := NewImageInitializationError(ImageSizeRequired, "array type requires size")
-			if bldErr, ok := ferr.(*ImageInitializationError); ok {
-				bldErr.ApplyMeta(FileErrorMetaData{
-					Filename: cfg.Filename,
-					DataSize: uint64(0),
-					MemSize:  uint64(len(mem)),
-				})
-			}
-			return warns, NewImageInitializationError(ImageSizeRequired, "array type requires size")
-		}
-		if cfg.Size > uint64(len(mem)) {
-			if strict {
-				return warns, errors.New("array size larger than memory")
-			}
-			warns = append(warns, "array size larger than memory")
-		}
-		if cfg.Size < uint64(len(cfg.Array)) {
-			if strict {
-				return warns, fmt.Errorf("array entry larger than size")
-			}
-			warns = append(warns, "array entry larger than size")
-		}
-		copy(mem, cfg.Array)
-		for i := uint64(len(cfg.Array)); i < cfg.Size && i < uint64(len(mem)); i++ {
-			mem[i] = 0x00
-		}
+		warns, err := handleArray(cfg, mem, warns, strict)
+		return warns, err
 	case "empty":
-		if cfg.Size == 0 {
-			return warns, errors.New("empty type requires size")
-		}
-		if cfg.Size > uint64(len(mem)) {
-			if strict {
-				return warns, fmt.Errorf("memory is smaller than image size")
-			}
-			warns = append(warns, "memory is smaller than image size")
-		}
-		for i := uint64(0); i < cfg.Size && i < uint64(len(mem)); i++ {
-			mem[i] = 0x00
-		}
+		warns, err := handleEmpty(cfg, mem, warns, strict)
+		return warns, err
 	case "sparsearray":
 		for _, entry := range cfg.Sparse {
 			for i, b := range entry.Array {
@@ -188,6 +147,117 @@ func PopulateImage(mem []byte, cfg *ImageConfig, strict bool) ([]string, error) 
 	default:
 		return warns, fmt.Errorf("unknown image type: %s", cfg.Type)
 	}
+	return warns, nil
+}
+
+func handleEmpty(cfg *ImageConfig, mem []byte, warns []string, strict bool) ([]string, error) {
+	if cfg.Size == 0 {
+		ferr := NewImageInitializationError(ImageSizeRequired, errmsg_EmptyRequireSize)
+		if bldErr, ok := ferr.(*ImageInitializationError); ok {
+			bldErr.ApplyMeta(ImageErrorMetaData{
+				Filename:   cfg.Filename,
+				DataSize:   uint64(len(cfg.Array)),
+				ConfigSize: uint64(cfg.Size),
+				MemSize:    uint64(len(mem)),
+			})
+		}
+		return warns, ferr
+	}
+	if cfg.Size > uint64(len(mem)) {
+		if strict {
+			ferr := NewImageInitializationError(ImageSizeTooLargeForMemory, errmsg_EmptyMemorySmallerThanSize)
+			if bldErr, ok := ferr.(*ImageInitializationError); ok {
+				bldErr.ApplyMeta(ImageErrorMetaData{
+					Filename:   cfg.Filename,
+					DataSize:   uint64(len(cfg.Array)),
+					ConfigSize: uint64(cfg.Size),
+					MemSize:    uint64(len(mem)),
+				})
+			}
+			return warns, ferr
+		}
+		warns = append(warns, errmsg_EmptyMemorySmallerThanSize)
+	}
+	for i := uint64(0); i < cfg.Size && i < uint64(len(mem)); i++ {
+		mem[i] = 0x00
+	}
+	return warns, nil
+}
+
+func handleArray(cfg *ImageConfig, mem []byte, warns []string, strict bool) ([]string, error) {
+	if cfg.Size == 0 {
+		ferr := NewImageInitializationError(ImageSizeRequired, errmsg_ArrayRequiresSize)
+		if bldErr, ok := ferr.(*ImageInitializationError); ok {
+			bldErr.ApplyMeta(ImageErrorMetaData{
+				Filename:   cfg.Filename,
+				DataSize:   uint64(len(cfg.Array)),
+				ConfigSize: uint64(cfg.Size),
+				MemSize:    uint64(len(mem)),
+			})
+		}
+		return warns, ferr
+	}
+	if cfg.Size > uint64(len(mem)) {
+		if strict {
+			ferr := NewImageInitializationError(ImageSizeTooLargeForMemory, errmsg_ArrayLargerMemory)
+			if bldErr, ok := ferr.(*ImageInitializationError); ok {
+				bldErr.ApplyMeta(ImageErrorMetaData{
+					Filename:   cfg.Filename,
+					DataSize:   uint64(len(cfg.Array)),
+					ConfigSize: uint64(cfg.Size),
+					MemSize:    uint64(len(mem)),
+				})
+			}
+			return warns, ferr
+		}
+		warns = append(warns, errmsg_ArrayLargerMemory)
+	}
+	if cfg.Size < uint64(len(cfg.Array)) {
+		if strict {
+			ferr := NewImageInitializationError(ImageInitArrayLargerThanConfig, errmsg_ArrayLargerSize)
+			if bldErr, ok := ferr.(*ImageInitializationError); ok {
+				bldErr.ApplyMeta(ImageErrorMetaData{
+					Filename:   cfg.Filename,
+					DataSize:   uint64(len(cfg.Array)),
+					ConfigSize: uint64(cfg.Size),
+					MemSize:    uint64(len(mem)),
+				})
+			}
+			return warns, ferr
+		}
+		warns = append(warns, errmsg_ArrayLargerSize)
+	}
+	copy(mem, cfg.Array)
+	for i := uint64(len(cfg.Array)); i < cfg.Size && i < uint64(len(mem)); i++ {
+		mem[i] = 0x00
+	}
+	return warns, nil
+}
+
+func handleFile(cfg *ImageConfig, warns []string, mem []byte, strict bool) ([]string, error) {
+	data, err := ReadFile(cfg.Filename)
+	if err != nil {
+		return warns, NewImageInitializationErrorWithCause(FileImageOtherError, errmsg_ReadingFile, err)
+	}
+	if len(data) > len(mem) {
+		if strict {
+			ferr := NewImageInitializationError(ImageSizeTooLargeForMemory,
+				fmt.Sprintf(errmsg_FileLargerMemory, len(data), len(mem)))
+			if bldErr, ok := ferr.(*ImageInitializationError); ok {
+				bldErr.ApplyMeta(ImageErrorMetaData{
+					Filename:   cfg.Filename,
+					DataSize:   uint64(len(data)),
+					ConfigSize: uint64(cfg.Size),
+					MemSize:    uint64(len(mem)),
+				})
+			}
+
+			return warns, ferr
+		}
+		// For now, we are keeping warns as just strings
+		warns = append(warns, fmt.Sprintf(errmsg_FileLargerMemory, len(data), len(mem)))
+	}
+	copy(mem, data)
 	return warns, nil
 }
 

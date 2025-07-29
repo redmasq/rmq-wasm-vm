@@ -65,6 +65,14 @@ func GetImageErrorMessage(err error) string {
 	return err.Error()
 }
 
+func GetImageErrorMeta(err error) any {
+	var imgErr *wasmvm.ImageInitializationError
+	if errors.As(err, &imgErr) {
+		return imgErr.Meta
+	}
+	return nil
+}
+
 // Configuration struct itself
 type imageTestCase struct {
 	name              string
@@ -77,6 +85,7 @@ type imageTestCase struct {
 	checkErrorMessage bool
 	checkErrorCause   bool
 	checkCauseString  bool
+	checkMeta         bool
 	errorType         *wasmvm.ImageInitializationError
 	errorContains     string
 	warnsContains     string
@@ -190,6 +199,16 @@ func processTestExpectError(t *testing.T, err error, warns []string, tc imageTes
 				assert.Contains(t, err2.Error(), errCmp.Error())
 			}
 		}
+		if tc.checkMeta {
+			errMeta := GetImageErrorMeta(err)
+			errCmpMeta := GetImageErrorMeta(tc.errorType)
+			assert.True(t, (errMeta != nil && errCmpMeta != nil) || errMeta == nil && errCmpMeta == nil)
+			if errMeta != nil {
+				assert.IsType(t, errCmpMeta, errMeta)
+				assert.Equal(t, errCmpMeta, errMeta)
+			}
+
+		}
 
 	} else if tc.errorContains != "" {
 		assert.Contains(t, err.Error(), tc.errorContains)
@@ -302,11 +321,12 @@ func TestPopulateImage_File(t *testing.T) {
 			memoryContains:    nil,
 			checkErrorType:    true,
 			checkErrorMessage: true,
+			checkMeta:         true,
 			errorType: &wasmvm.ImageInitializationError{
 				Type: wasmvm.ImageSizeTooLargeForMemory,
 				Msg:  "file entry image is larger than memory file:4 vs mem:3",
-				Meta: wasmvm.FileErrorMetaData{
-					Filename: "fake.dat",
+				Meta: wasmvm.ImageErrorMetaData{
+					Filename: "fake.file",
 					DataSize: uint64(4),
 					MemSize:  uint64(3),
 				},
@@ -352,15 +372,26 @@ func TestPopulateImage_Array(t *testing.T) {
 			useStrict:      false,
 		},
 		{
-			name:           "failure - out of bounds",
-			tType:          testArray,
-			mockArray:      []byte{0xAB, 0xCD, 0x12, 0x34},
-			expectError:    true,
-			expertWarns:    false,
-			memoryContains: nil,
-			warnsContains:  "array entry larger than size",
-			memorySize:     3,
-			useStrict:      true,
+			name:              "failure - out of bounds",
+			tType:             testArray,
+			mockArray:         []byte{0xAB, 0xCD, 0x12, 0x34},
+			expectError:       true,
+			expertWarns:       false,
+			memoryContains:    nil,
+			checkErrorType:    true,
+			checkErrorMessage: true,
+			checkMeta:         true,
+			errorType: &wasmvm.ImageInitializationError{
+				Type: wasmvm.ImageInitArrayLargerThanConfig,
+				Msg:  "array entry larger than size",
+				Meta: wasmvm.ImageErrorMetaData{
+					DataSize:   uint64(4),
+					ConfigSize: uint64(3),
+					MemSize:    uint64(3),
+				},
+			},
+			memorySize: 3,
+			useStrict:  true,
 		},
 		{
 			name:           "warn - size mismatch",
@@ -369,40 +400,51 @@ func TestPopulateImage_Array(t *testing.T) {
 			expectError:    false,
 			expertWarns:    true,
 			memoryContains: []byte{0xAB, 0xCD, 0x00, 0x00},
-			warnsContains:  "array size larger than memory",
+			warnsContains:  "array configured size larger than memory",
 			memorySize:     4,
 			imageSize:      6,
 			useStrict:      false,
 		},
 		{
-			name:           "failure - size mismatch",
-			tType:          testArray,
-			mockArray:      []byte{0xAB, 0xCD},
-			expectError:    true,
-			expertWarns:    false,
-			memoryContains: nil,
-			checkErrorType: false,
-			errorContains:  "array size larger than memory",
-			memorySize:     4,
-			imageSize:      6,
-			useStrict:      true,
+			name:              "failure - size mismatch",
+			tType:             testArray,
+			mockArray:         []byte{0xAB, 0xCD},
+			expectError:       true,
+			expertWarns:       false,
+			memoryContains:    nil,
+			checkErrorType:    true,
+			checkErrorMessage: true,
+			checkMeta:         true,
+			errorType: &wasmvm.ImageInitializationError{
+				Type: wasmvm.ImageSizeTooLargeForMemory,
+				Msg:  "array configured size larger than memory",
+				Meta: wasmvm.ImageErrorMetaData{
+					DataSize:   uint64(2),
+					ConfigSize: uint64(6),
+					MemSize:    uint64(4),
+				},
+			},
+			memorySize: 4,
+			imageSize:  6,
+			useStrict:  true,
 		},
 		{
 			name:              "failure - zero size for non-strict",
 			tType:             testArray,
 			mockArray:         []byte{0xAB, 0xCD},
-			expectError:       true, // This is a specific case where non-strict still fails
+			expectError:       true,
 			expertWarns:       false,
 			memoryContains:    nil,
-			checkErrorType:    true, // TODO: convert this test
+			checkErrorType:    true,
 			checkErrorMessage: true,
+			checkMeta:         true,
 			errorType: &wasmvm.ImageInitializationError{
 				Type: wasmvm.ImageSizeRequired,
 				Msg:  "array type requires size",
-				Meta: wasmvm.FileErrorMetaData{
-					Filename: "fake.dat",
-					DataSize: uint64(0),
-					MemSize:  uint64(4),
+				Meta: wasmvm.ImageErrorMetaData{
+					DataSize:   uint64(2),
+					ConfigSize: uint64(0),
+					MemSize:    uint64(4),
 				},
 			},
 			memorySize:     4,
@@ -411,13 +453,24 @@ func TestPopulateImage_Array(t *testing.T) {
 			useStrict:      false,
 		},
 		{
-			name:           "failure - zero size for strict",
-			tType:          testArray,
-			mockArray:      []byte{0xAB, 0xCD},
-			expectError:    true,
-			expertWarns:    false,
-			memoryContains: nil,
-			errorContains:  "array type requires size",
+			name:              "failure - zero size for strict",
+			tType:             testArray,
+			mockArray:         []byte{0xAB, 0xCD},
+			expectError:       true,
+			expertWarns:       false,
+			memoryContains:    nil,
+			checkErrorType:    true,
+			checkErrorMessage: true,
+			checkMeta:         true,
+			errorType: &wasmvm.ImageInitializationError{
+				Type: wasmvm.ImageSizeRequired,
+				Msg:  "array type requires size",
+				Meta: wasmvm.ImageErrorMetaData{
+					DataSize:   uint64(2),
+					ConfigSize: uint64(0),
+					MemSize:    uint64(4),
+				},
+			},
 			memorySize:     4,
 			imageSize:      0,
 			forceImageSize: true,
@@ -468,8 +521,42 @@ func TestPopulateImage_Empty(t *testing.T) {
 			expertWarns:       false,
 			memoryContains:    nil,
 			errorContains:     "memory is smaller than image size",
-			imageSize:         6,
-			useStrict:         true,
+			checkErrorType:    true,
+			checkErrorMessage: true,
+			checkMeta:         true,
+			errorType: &wasmvm.ImageInitializationError{
+				Type: wasmvm.ImageSizeTooLargeForMemory,
+				Msg:  "memory is smaller than image size",
+				Meta: wasmvm.ImageErrorMetaData{
+					DataSize:   uint64(0),
+					ConfigSize: uint64(6),
+					MemSize:    uint64(4),
+				},
+			},
+			imageSize: 6,
+			useStrict: true,
+		},
+		{
+			name:              "failure - zero size",
+			tType:             testEmpty,
+			prepopulateMemory: []byte{0xCA, 0xFE, 0xD0, 0x0D},
+			expectError:       true,
+			expertWarns:       false,
+			memoryContains:    nil,
+			checkErrorType:    true,
+			checkErrorMessage: true,
+			checkMeta:         true,
+			errorType: &wasmvm.ImageInitializationError{
+				Type: wasmvm.ImageSizeRequired,
+				Msg:  "empty type requires size",
+				Meta: wasmvm.ImageErrorMetaData{
+					DataSize:   uint64(0),
+					ConfigSize: uint64(0),
+					MemSize:    uint64(4),
+				},
+			},
+			imageSize: 0,
+			useStrict: true,
 		},
 	}
 
