@@ -17,11 +17,12 @@ func _() {
 	_ = x[ImageInitArrayLargerThanConfig-6]
 	_ = x[SparseEntryOutOfBounds-7]
 	_ = x[SparseEntryMemoryOverwrite-8]
+	_ = x[SparseEntryMultipleTypes-9]
 }
 
-const _ImageInitializationErrorType_name = "UndefinedImageErrorUnknownImageTypeFileImageOtherErrorImageSizeRequiredImageSizeTooLargeForConfigImageSizeTooLargeForMemoryImageInitArrayLargerThanConfigSparseEntryOutOfBoundsSparseEntryMemoryOverwrite"
+const _ImageInitializationErrorType_name = "UndefinedImageErrorUnknownImageTypeFileImageOtherErrorImageSizeRequiredImageSizeTooLargeForConfigImageSizeTooLargeForMemoryImageInitArrayLargerThanConfigSparseEntryOutOfBoundsSparseEntryMemoryOverwriteSparseEntryMultipleTypes"
 
-var _ImageInitializationErrorType_index = [...]uint8{0, 19, 35, 54, 71, 97, 123, 153, 175, 201}
+var _ImageInitializationErrorType_index = [...]uint8{0, 19, 35, 54, 71, 97, 123, 153, 175, 201, 225}
 
 func (i ImageInitializationErrorType) String() string {
 	if i >= ImageInitializationErrorType(len(_ImageInitializationErrorType_index)-1) {

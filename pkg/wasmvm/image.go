@@ -19,6 +19,7 @@ const (
 	ImageInitArrayLargerThanConfig
 	SparseEntryOutOfBounds
 	SparseEntryMemoryOverwrite
+	SparseEntryMultipleTypes
 )
 
 // Custom error struct
@@ -104,6 +105,12 @@ type ImageErrorMetaData struct {
 	MemSize    uint64 `json:"memSize"`
 }
 
+type ImageErrorSparseMetaData struct {
+	ConfigSize     uint64             `json:"configSize"`
+	MemSize        uint64             `json:"memSize"`
+	ProblemEntries []SparseArrayEntry `json:"problemEntries"`
+}
+
 const errmsg_ReadingFile = "Error while reading image file"
 const errmsg_FileLargerMemory = "file entry image is larger than memory file:%d vs mem:%d"
 const errmsg_ArrayRequiresSize = "array type requires size"
@@ -111,6 +118,12 @@ const errmsg_ArrayLargerMemory = "array configured size larger than memory"
 const errmsg_ArrayLargerSize = "array entry larger than size"
 const errmsg_EmptyRequireSize = "empty type requires size"
 const errmsg_EmptyMemorySmallerThanSize = "memory is smaller than image size"
+const errmsg_SparseArrayOOBNumbered = "sparsearray entry out of bounds at offset %d"
+const errmsg_SparseArrayOOB = "sparsearray entry out of bounds detected"
+const errmsg_SparseArrayOverwriteNumbered = "sparsearray: overwrite at offset %d"
+const errmsg_SparseArrayOverwrite = "sparsearray: overwrite detected"
+const errmsg_SparseArrayMultiple = "sparsearray: multiple errors"
+const errmsg_SpareArrayUnknown = "sparearray: unknown error"
 
 // PopulateImage fills mem according to config; returns warnings and error if any
 func PopulateImage(mem []byte, cfg *ImageConfig, strict bool) ([]string, error) {
@@ -126,26 +139,73 @@ func PopulateImage(mem []byte, cfg *ImageConfig, strict bool) ([]string, error) 
 		warns, err := handleEmpty(cfg, mem, warns, strict)
 		return warns, err
 	case "sparsearray":
-		for _, entry := range cfg.Sparse {
-			for i, b := range entry.Array {
-				addr := entry.Offset + uint64(i)
-				if addr >= uint64(len(mem)) {
-					if strict {
-						return warns, fmt.Errorf("sparsearray entry out of bounds at offset %d", addr)
+		warns, err := handleSparse(cfg, mem, strict, warns)
+		return warns, err
+	default:
+		return warns, fmt.Errorf("unknown image type: %s", cfg.Type)
+	}
+}
+
+func handleSparse(cfg *ImageConfig, mem []byte, strict bool, warns []string) ([]string, error) {
+	problemEntries := []SparseArrayEntry{}
+	eType := UndefinedImageError
+	for _, entry := range cfg.Sparse {
+		for i, b := range entry.Array {
+			addr := entry.Offset + uint64(i)
+			if addr >= uint64(len(mem)) {
+				if strict {
+					if eType == UndefinedImageError {
+						eType = SparseEntryOutOfBounds
+					} else if eType == SparseEntryOutOfBounds {
+						// Do Nothing
+					} else if eType != SparseEntryMultipleTypes {
+						eType = SparseEntryMultipleTypes
 					}
-					warns = append(warns, fmt.Sprintf("sparsearray entry out of bounds at offset %d", addr))
+					problemEntries = append(problemEntries, entry)
 					continue
+				} else {
+					warns = append(warns, fmt.Sprintf(errmsg_SparseArrayOOBNumbered, addr))
 				}
-				if mem[addr] != 0x00 && !strict {
-					warns = append(warns, fmt.Sprintf("sparsearray: overwrite at offset %d", addr))
-				} else if mem[addr] != 0x00 && strict {
-					return warns, fmt.Errorf("sparsearray: overwrite at offset %d", addr)
+			} else if mem[addr] != 0x00 && !strict {
+				warns = append(warns, fmt.Sprintf(errmsg_SparseArrayOverwriteNumbered, addr))
+			} else if mem[addr] != 0x00 && strict {
+				if eType == UndefinedImageError {
+					eType = SparseEntryMemoryOverwrite
+				} else if eType == SparseEntryMemoryOverwrite {
+					// Do Nothing
+				} else if eType != SparseEntryMultipleTypes {
+					eType = SparseEntryMultipleTypes
 				}
+				problemEntries = append(problemEntries, entry)
+				continue
+			}
+			if addr < uint64(len(mem)) {
 				mem[addr] = b
 			}
 		}
-	default:
-		return warns, fmt.Errorf("unknown image type: %s", cfg.Type)
+	}
+	// We don't abort early
+	if len(problemEntries) != 0 {
+		var msg string
+		switch eType {
+		case SparseEntryOutOfBounds:
+			msg = errmsg_SparseArrayOOB
+		case SparseEntryMemoryOverwrite:
+			msg = errmsg_SparseArrayOverwrite
+		case SparseEntryMultipleTypes:
+			msg = errmsg_SparseArrayMultiple
+		default:
+			msg = errmsg_SpareArrayUnknown
+		}
+		ferr := NewImageInitializationError(eType, msg)
+		if bldErr, ok := ferr.(*ImageInitializationError); ok {
+			bldErr.ApplyMeta(ImageErrorSparseMetaData{
+				ConfigSize:     uint64(cfg.Size),
+				MemSize:        uint64(len(mem)),
+				ProblemEntries: problemEntries,
+			})
+		}
+		return nil, ferr
 	}
 	return warns, nil
 }

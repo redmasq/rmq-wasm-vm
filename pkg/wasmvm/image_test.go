@@ -79,6 +79,7 @@ type imageTestCase struct {
 	tType             testType
 	mockReadFile      readFileMock
 	mockArray         []byte
+	mockSparse        []wasmvm.SparseArrayEntry
 	expectError       bool
 	expertWarns       bool
 	checkErrorType    bool
@@ -234,7 +235,14 @@ func prepareConfigForTest(tc imageTestCase, cfg *wasmvm.ImageConfig, replaceRead
 			Type: "empty",
 			Size: size,
 		}
+	case testSparse:
+		cfg = &wasmvm.ImageConfig{
+			Type:   "sparsearray",
+			Size:   size,
+			Sparse: tc.mockSparse,
+		}
 	}
+
 	return cfg, replaceReadFile
 }
 
@@ -563,19 +571,37 @@ func TestPopulateImage_Empty(t *testing.T) {
 	executeTests(t, tests)
 }
 
-func TestPopulateImage_SparseArrayType_Normal(t *testing.T) {
-	mem := make([]byte, 10) // memory with 10 bytes, all zero by default
-	cfg := &wasmvm.ImageConfig{
-		Type: "sparsearray",
-		Sparse: []wasmvm.SparseArrayEntry{
-			{Offset: 0, Array: []uint8{1, 2, 3}}, // fills mem[0], mem[1], mem[2]
-			{Offset: 7, Array: []uint8{8, 9}},    // fills mem[7], mem[8]
+func TestPopulateImage_Sparse(t *testing.T) {
+	tests := []imageTestCase{
+		{
+			name:  "success - normal",
+			tType: testSparse,
+			mockSparse: []wasmvm.SparseArrayEntry{
+				{Offset: 0, Array: []uint8{1, 2, 3}}, // fills mem[0], mem[1], mem[2]
+				{Offset: 7, Array: []uint8{8, 9}},    // fills mem[7], mem[8]
+			},
+			expectError:    false,
+			expertWarns:    false,
+			memoryContains: []byte{0x01, 0x02, 0x03, 0x00, 0x00, 0x00, 0x00, 0x08, 0x09, 0x00},
+			memorySize:     10,
+			useStrict:      true,
+		},
+		{
+			name:  "warn - out of bounds",
+			tType: testSparse,
+			mockSparse: []wasmvm.SparseArrayEntry{
+				{Offset: 0, Array: []uint8{7}},
+				{Offset: 2, Array: []uint8{8}}, // out of bounds
+			},
+			expectError:    false,
+			expertWarns:    true,
+			warnsContains:  "sparsearray entry out of bounds at offset 2",
+			memoryContains: []byte{0x07, 0x00},
+			memorySize:     2,
+			useStrict:      false,
 		},
 	}
-	warns, err := wasmvm.PopulateImage(mem, cfg, true)
-	assert.NoError(t, err)
-	assert.Empty(t, warns)
-	assert.Equal(t, []byte{1, 2, 3, 0, 0, 0, 0, 8, 9, 0}, mem)
+	executeTests(t, tests)
 }
 
 func TestPopulateImage_SparseArrayType_StrictAndLenient_OOB(t *testing.T) {
