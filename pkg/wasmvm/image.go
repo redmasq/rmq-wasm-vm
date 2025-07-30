@@ -53,7 +53,16 @@ func (e *ImageInitializationError) ApplyMeta(meta any) *ImageInitializationError
 	return e
 }
 
+func (sa *SparseArrayEntry) CreateErrorMeta(errorType ImageInitializationErrorType) *SparseArrayErrorEntry {
+	return &SparseArrayErrorEntry{
+		Offset:    sa.Offset,
+		Array:     sa.Array,
+		ErrorType: errorType,
+	}
+}
+
 /*
+// This might get added later to support configuration export
 func (e *ImageInitializationError) MarshalJSON() ([]byte, error) {
 	type Dummy ImageInitializationError
 	return json.Marshal(&struct {
@@ -98,6 +107,12 @@ type SparseArrayEntry struct {
 	Array  []uint8 `json:"array"`
 }
 
+type SparseArrayErrorEntry struct {
+	Offset    uint64  `json:"offset"`
+	Array     []uint8 `json:"array"`
+	ErrorType ImageInitializationErrorType
+}
+
 type ImageErrorMetaData struct {
 	Filename   string `json:"filename,omitempty"`
 	DataSize   uint64 `json:"dataSize"`
@@ -106,9 +121,9 @@ type ImageErrorMetaData struct {
 }
 
 type ImageErrorSparseMetaData struct {
-	ConfigSize     uint64             `json:"configSize"`
-	MemSize        uint64             `json:"memSize"`
-	ProblemEntries []SparseArrayEntry `json:"problemEntries"`
+	ConfigSize     uint64                  `json:"configSize"`
+	MemSize        uint64                  `json:"memSize"`
+	ProblemEntries []SparseArrayErrorEntry `json:"problemEntries"`
 }
 
 const errmsg_ReadingFile = "Error while reading image file"
@@ -142,12 +157,12 @@ func PopulateImage(mem []byte, cfg *ImageConfig, strict bool) ([]string, error) 
 		warns, err := handleSparse(cfg, mem, strict, warns)
 		return warns, err
 	default:
-		return warns, fmt.Errorf("unknown image type: %s", cfg.Type)
+		return warns, NewImageInitializationError(UnknownImageType, fmt.Sprintf("unknown image type: %s", cfg.Type))
 	}
 }
 
 func handleSparse(cfg *ImageConfig, mem []byte, strict bool, warns []string) ([]string, error) {
-	problemEntries := []SparseArrayEntry{}
+	problemEntries := []SparseArrayErrorEntry{}
 	eType := UndefinedImageError
 	for _, entry := range cfg.Sparse {
 		for i, b := range entry.Array {
@@ -161,12 +176,15 @@ func handleSparse(cfg *ImageConfig, mem []byte, strict bool, warns []string) ([]
 					} else if eType != SparseEntryMultipleTypes {
 						eType = SparseEntryMultipleTypes
 					}
-					problemEntries = append(problemEntries, entry)
+					em := *entry.CreateErrorMeta(SparseEntryOutOfBounds)
+					problemEntries = append(problemEntries, em)
 					continue
 				} else {
 					warns = append(warns, fmt.Sprintf(errmsg_SparseArrayOOBNumbered, addr))
 				}
 			} else if mem[addr] != 0x00 && !strict {
+				// Note that Overwrite means replacing non-zero data
+				// rather than than a range check
 				warns = append(warns, fmt.Sprintf(errmsg_SparseArrayOverwriteNumbered, addr))
 			} else if mem[addr] != 0x00 && strict {
 				if eType == UndefinedImageError {
@@ -176,7 +194,8 @@ func handleSparse(cfg *ImageConfig, mem []byte, strict bool, warns []string) ([]
 				} else if eType != SparseEntryMultipleTypes {
 					eType = SparseEntryMultipleTypes
 				}
-				problemEntries = append(problemEntries, entry)
+				em := *entry.CreateErrorMeta(SparseEntryMemoryOverwrite)
+				problemEntries = append(problemEntries, em)
 				continue
 			}
 			if addr < uint64(len(mem)) {
@@ -195,6 +214,8 @@ func handleSparse(cfg *ImageConfig, mem []byte, strict bool, warns []string) ([]
 		case SparseEntryMultipleTypes:
 			msg = errmsg_SparseArrayMultiple
 		default:
+			// There shouldn't be any condition that actually triggers this
+			// But here for future ease of identification of issues
 			msg = errmsg_SpareArrayUnknown
 		}
 		ferr := NewImageInitializationError(eType, msg)

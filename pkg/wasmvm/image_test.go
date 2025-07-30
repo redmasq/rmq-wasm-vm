@@ -75,27 +75,28 @@ func GetImageErrorMeta(err error) any {
 
 // Configuration struct itself
 type imageTestCase struct {
-	name              string
-	tType             testType
-	mockReadFile      readFileMock
-	mockArray         []byte
-	mockSparse        []wasmvm.SparseArrayEntry
-	expectError       bool
-	expertWarns       bool
-	checkErrorType    bool
-	checkErrorMessage bool
-	checkErrorCause   bool
-	checkCauseString  bool
-	checkMeta         bool
-	errorType         *wasmvm.ImageInitializationError
-	errorContains     string
-	warnsContains     string
-	prepopulateMemory []byte
-	memoryContains    []byte
-	imageSize         int
-	forceImageSize    bool
-	memorySize        int
-	useStrict         bool
+	name                  string
+	tType                 testType
+	mockReadFile          readFileMock
+	mockArray             []byte
+	mockSparse            []wasmvm.SparseArrayEntry
+	expectError           bool
+	expertWarns           bool
+	checkErrorType        bool
+	checkErrorMessage     bool
+	checkErrorCause       bool
+	checkCauseString      bool
+	checkMeta             bool
+	errorType             *wasmvm.ImageInitializationError
+	errorContains         string
+	warnsContains         string
+	multipleWarnsContains []string
+	prepopulateMemory     []byte
+	memoryContains        []byte
+	imageSize             int
+	forceImageSize        bool
+	memorySize            int
+	useStrict             bool
 }
 
 func executeTests(t *testing.T, tests []imageTestCase) {
@@ -166,6 +167,11 @@ func executeTests(t *testing.T, tests []imageTestCase) {
 						assert.NotEmpty(t, warns)
 						if tc.warnsContains != "" {
 							assert.Contains(t, warns[0], tc.warnsContains)
+						} else if tc.multipleWarnsContains != nil {
+							for i = range tc.multipleWarnsContains {
+								// We expect the same order, but allow partial match
+								assert.Contains(t, warns[i], tc.multipleWarnsContains[i])
+							}
 						}
 					}
 					if tc.memoryContains != nil {
@@ -600,52 +606,160 @@ func TestPopulateImage_Sparse(t *testing.T) {
 			memorySize:     2,
 			useStrict:      false,
 		},
+		{
+			name:  "failure - out of bounds",
+			tType: testSparse,
+			mockSparse: []wasmvm.SparseArrayEntry{
+				{Offset: 0, Array: []uint8{7}},
+				{Offset: 2, Array: []uint8{8}}, // out of bounds
+			},
+			expectError:       true,
+			expertWarns:       false,
+			checkErrorType:    true,
+			checkErrorMessage: true,
+			checkMeta:         true,
+			errorType: &wasmvm.ImageInitializationError{
+				Type: wasmvm.SparseEntryOutOfBounds,
+				Msg:  "sparsearray entry out of bounds detected",
+				Meta: wasmvm.ImageErrorSparseMetaData{
+					ConfigSize: uint64(2),
+					MemSize:    uint64(2),
+					ProblemEntries: []wasmvm.SparseArrayErrorEntry{
+						{Offset: 2, Array: []uint8{8}, ErrorType: wasmvm.SparseEntryOutOfBounds}, // out of bounds
+					},
+				},
+			},
+			memoryContains: []byte{0x07, 0x00},
+			memorySize:     2,
+			useStrict:      true,
+		},
+		{
+			name:              "warn - overwrite",
+			tType:             testSparse,
+			prepopulateMemory: []byte{0x05, 0x00},
+			mockSparse: []wasmvm.SparseArrayEntry{
+				{Offset: 0, Array: []uint8{6}},
+			},
+			expectError:    false,
+			expertWarns:    true,
+			warnsContains:  "overwrite at offset 0",
+			memoryContains: []byte{0x06, 0x00}, // Warn will actually allow the replace
+			memorySize:     2,
+			useStrict:      false,
+		},
+		{
+			name:              "failure - overwrite",
+			tType:             testSparse,
+			prepopulateMemory: []byte{0x05, 0x00},
+			mockSparse: []wasmvm.SparseArrayEntry{
+				{Offset: 0, Array: []uint8{6}},
+			},
+			expectError:       true,
+			expertWarns:       false,
+			checkErrorType:    true,
+			checkErrorMessage: true,
+			checkMeta:         true,
+			errorType: &wasmvm.ImageInitializationError{
+				Type: wasmvm.SparseEntryMemoryOverwrite,
+				Msg:  "sparsearray: overwrite detected",
+				Meta: wasmvm.ImageErrorSparseMetaData{
+					ConfigSize: uint64(2),
+					MemSize:    uint64(2),
+					ProblemEntries: []wasmvm.SparseArrayErrorEntry{
+						{Offset: 0, Array: []uint8{6}, ErrorType: wasmvm.SparseEntryMemoryOverwrite}, // Would have replaced the 0x05
+					},
+				},
+			},
+			memoryContains: []byte{0x05, 0x00},
+			memorySize:     2,
+			useStrict:      true,
+		},
+		{
+			name:              "warn - mixed",
+			tType:             testSparse,
+			prepopulateMemory: []byte{0x05, 0x00},
+			mockSparse: []wasmvm.SparseArrayEntry{
+				{Offset: 0, Array: []uint8{6}}, // Overwrites
+				{Offset: 2, Array: []uint8{8}}, // out of bounds
+			},
+			expectError: false,
+			expertWarns: true,
+			multipleWarnsContains: []string{
+				"overwrite at offset 0",
+				"sparsearray entry out of bounds at offset 2",
+			},
+			memoryContains: []byte{0x06, 0x00}, // Warn will actually allow the replace
+			memorySize:     2,
+			useStrict:      false,
+		},
+		{
+			name:              "failure - mixed 1",
+			tType:             testSparse,
+			prepopulateMemory: []byte{0x05, 0x01},
+			mockSparse: []wasmvm.SparseArrayEntry{
+				{Offset: 0, Array: []uint8{6}}, // Overwrites
+				{Offset: 1, Array: []uint8{6}}, // Overwrites
+				{Offset: 2, Array: []uint8{8}}, // out of bounds
+			},
+			expectError:       true,
+			expertWarns:       false,
+			checkErrorType:    true,
+			checkErrorMessage: true,
+			checkMeta:         true,
+			errorType: &wasmvm.ImageInitializationError{
+				Type: wasmvm.SparseEntryMultipleTypes,
+				Msg:  "sparsearray: multiple errors",
+				Meta: wasmvm.ImageErrorSparseMetaData{
+					ConfigSize: uint64(2),
+					MemSize:    uint64(2),
+					ProblemEntries: []wasmvm.SparseArrayErrorEntry{
+						{Offset: 0, Array: []uint8{6}, ErrorType: wasmvm.SparseEntryMemoryOverwrite}, // Would have replaced the 0x05
+						{Offset: 1, Array: []uint8{6}, ErrorType: wasmvm.SparseEntryMemoryOverwrite}, // Would have replaced the 0x05
+						{Offset: 2, Array: []uint8{8}, ErrorType: wasmvm.SparseEntryOutOfBounds},     // out of bounds
+					},
+				},
+			},
+			memoryContains: []byte{0x05, 0x00},
+			memorySize:     2,
+			useStrict:      true,
+		},
+		{
+			name:              "failure - mixed 2",
+			tType:             testSparse,
+			prepopulateMemory: []byte{0x05, 0x00},
+			mockSparse: []wasmvm.SparseArrayEntry{
+				// Side note, the configuration doesn't sort by offset order
+				{Offset: 2, Array: []uint8{8}}, // out of bounds
+				{Offset: 3, Array: []uint8{9}}, // out of bounds
+				{Offset: 0, Array: []uint8{6}}, // Overwrites
+			},
+			expectError:       true,
+			expertWarns:       false,
+			checkErrorType:    true,
+			checkErrorMessage: true,
+			checkMeta:         true,
+			errorType: &wasmvm.ImageInitializationError{
+				Type: wasmvm.SparseEntryMultipleTypes,
+				Msg:  "sparsearray: multiple errors",
+				Meta: wasmvm.ImageErrorSparseMetaData{
+					ConfigSize: uint64(2),
+					MemSize:    uint64(2),
+					ProblemEntries: []wasmvm.SparseArrayErrorEntry{
+						{Offset: 2, Array: []uint8{8}, ErrorType: wasmvm.SparseEntryOutOfBounds},     // out of bounds
+						{Offset: 3, Array: []uint8{9}, ErrorType: wasmvm.SparseEntryOutOfBounds},     // out of bounds
+						{Offset: 0, Array: []uint8{6}, ErrorType: wasmvm.SparseEntryMemoryOverwrite}, // Would have replaced the 0x05
+					},
+				},
+			},
+			memoryContains: []byte{0x05, 0x00},
+			memorySize:     2,
+			useStrict:      true,
+		},
 	}
 	executeTests(t, tests)
 }
 
-func TestPopulateImage_SparseArrayType_StrictAndLenient_OOB(t *testing.T) {
-	// Test strict
-	mem := make([]byte, 2)
-	cfg := &wasmvm.ImageConfig{
-		Type: "sparsearray",
-		Sparse: []wasmvm.SparseArrayEntry{
-			{Offset: 0, Array: []uint8{7}},
-			{Offset: 2, Array: []uint8{8}}, // out of bounds
-		},
-	}
-	warns, err := wasmvm.PopulateImage(mem, cfg, true)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "sparsearray entry out of bounds")
-
-	// Test lenient
-	mem = make([]byte, 2)
-	warns, err = wasmvm.PopulateImage(mem, cfg, false)
-	assert.NoError(t, err)
-	assert.Contains(t, warns[0], "sparsearray entry out of bounds")
-	assert.Equal(t, uint8(7), mem[0])
-}
-
-func TestPopulateImage_OverwriteDetection(t *testing.T) {
-	// Overwrite warning, lenient
-	mem := []byte{5, 0}
-	cfg := &wasmvm.ImageConfig{
-		Type: "sparsearray",
-		Sparse: []wasmvm.SparseArrayEntry{
-			{Offset: 0, Array: []uint8{6}},
-		},
-	}
-	warns, err := wasmvm.PopulateImage(mem, cfg, false)
-	assert.NoError(t, err)
-	assert.Contains(t, warns[0], "overwrite at offset 0")
-
-	// Overwrite error, strict
-	mem = []byte{5, 0}
-	warns, err = wasmvm.PopulateImage(mem, cfg, true)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "overwrite at offset 0")
-}
-
+// Below tests aren't table driven since they are so "one-off-ish"
 func TestPopulateImage_UnknownType(t *testing.T) {
 	mem := make([]byte, 1)
 	cfg := &wasmvm.ImageConfig{
@@ -653,8 +767,16 @@ func TestPopulateImage_UnknownType(t *testing.T) {
 	}
 	warns, err := wasmvm.PopulateImage(mem, cfg, false)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown image type")
 	assert.Empty(t, warns)
+	var imgErr *wasmvm.ImageInitializationError
+	require.IsType(t, imgErr, err)
+	msg := GetImageErrorMessage(err)
+	eType := GetImageErrorType(err)
+
+	assert.Contains(t, msg, "unknown image type")
+	assert.Contains(t, err.Error(), "unknown image type")
+	assert.Equal(t, wasmvm.UnknownImageType, eType)
+
 }
 
 func TestParseImageConfig_JSON(t *testing.T) {
