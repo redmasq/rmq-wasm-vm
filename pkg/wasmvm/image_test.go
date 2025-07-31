@@ -99,6 +99,12 @@ type imageTestCase struct {
 	useStrict             bool
 }
 
+type imageTypeTestCase struct {
+	name    string
+	expects wasmvm.ImageType
+	isError bool
+}
+
 func executeTests(t *testing.T, tests []imageTestCase) {
 	for i := range tests {
 		tc := tests[i]
@@ -226,24 +232,24 @@ func prepareConfigForTest(tc imageTestCase, cfg *wasmvm.ImageConfig, replaceRead
 	switch tc.tType {
 	case testFile:
 		cfg = &wasmvm.ImageConfig{
-			Type:     "file",
+			Type:     wasmvm.File,
 			Filename: "fake.file",
 		}
 		replaceReadFile = tc.mockReadFile
 	case testArray:
 		cfg = &wasmvm.ImageConfig{
-			Type:  "array",
+			Type:  wasmvm.Array,
 			Size:  size,
 			Array: tc.mockArray,
 		}
 	case testEmpty:
 		cfg = &wasmvm.ImageConfig{
-			Type: "empty",
+			Type: wasmvm.Empty,
 			Size: size,
 		}
 	case testSparse:
 		cfg = &wasmvm.ImageConfig{
-			Type:   "sparsearray",
+			Type:   wasmvm.SparseArray,
 			Size:   size,
 			Sparse: tc.mockSparse,
 		}
@@ -763,7 +769,7 @@ func TestPopulateImage_Sparse(t *testing.T) {
 func TestPopulateImage_UnknownType(t *testing.T) {
 	mem := make([]byte, 1)
 	cfg := &wasmvm.ImageConfig{
-		Type: "foobar",
+		Type: wasmvm.Unknown,
 	}
 	warns, err := wasmvm.PopulateImage(mem, cfg, false)
 	assert.Error(t, err)
@@ -779,12 +785,88 @@ func TestPopulateImage_UnknownType(t *testing.T) {
 
 }
 
+func TestParseImageType_JSON(t *testing.T) {
+	tests := []imageTypeTestCase{
+		{
+			name:    "file",
+			expects: wasmvm.File,
+		},
+		{
+			name:    "File",
+			expects: wasmvm.File,
+		},
+		{
+			name:    " File\t\r\n", // Just for the whitespace lulz
+			expects: wasmvm.File,
+		},
+		{
+			name:    "array",
+			expects: wasmvm.Array,
+		},
+		{
+			name:    "Array",
+			expects: wasmvm.Array,
+		},
+		{
+			name:    "empty",
+			expects: wasmvm.Empty,
+		},
+		{
+			name:    "Empty",
+			expects: wasmvm.Empty,
+		},
+		{
+			name:    "sparsearray",
+			expects: wasmvm.SparseArray,
+		},
+		{
+			name:    "SparseArray",
+			expects: wasmvm.SparseArray,
+		},
+		{
+			name:    "Sparse Array", // We don't do in between whitespace
+			expects: wasmvm.Unknown,
+			isError: true,
+		},
+		{
+			name:    "narf",
+			expects: wasmvm.Unknown,
+			isError: true,
+		},
+		{
+			name:    "POIT",
+			expects: wasmvm.Unknown,
+			isError: true,
+		},
+		{
+			name:    "🤢", // Emoji Edge case
+			expects: wasmvm.Unknown,
+			isError: true,
+		},
+	}
+	for _, test := range tests {
+		name := fmt.Sprintf("ImageType: %s -> %s", test.name, test.expects.String())
+		t.Run(name, func(t *testing.T) {
+			t.Parallel() // This is actually safe for parallel
+			var iType wasmvm.ImageType
+			err := iType.UnmarshalText([]byte(test.name))
+			if test.isError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+			assert.Equal(t, iType, test.expects)
+		})
+	}
+
+}
+
 func TestParseImageConfig_JSON(t *testing.T) {
 	raw := []byte(`{"type":"array", "array":[1,2,3], "size":4}`)
 	cfg, err := wasmvm.ParseImageConfig(raw)
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
-	assert.Equal(t, "array", cfg.Type)
+	assert.Equal(t, wasmvm.Array, cfg.Type)
 	assert.Equal(t, []uint8{1, 2, 3}, cfg.Array)
 	assert.Equal(t, uint64(4), cfg.Size)
 }
@@ -794,4 +876,8 @@ func TestParseImageConfig_JSON_BogusInput(t *testing.T) {
 	cfg, err := wasmvm.ParseImageConfig(raw)
 	require.Error(t, err)
 	require.Nil(t, cfg)
+}
+
+func TestImageConfig_Fluent(t *testing.T) {
+
 }

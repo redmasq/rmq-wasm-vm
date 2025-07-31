@@ -59,7 +59,7 @@ func SetupAndRunVM(context *ExecutionContext) (*wasmvm.VMState, error) {
 	size := uint64(len(context.Program))
 	cfg := &wasmvm.VMConfig{
 		Image: &wasmvm.ImageConfig{
-			Type:  "array",
+			Type:  wasmvm.Array,
 			Size:  size,
 			Array: context.Program,
 		},
