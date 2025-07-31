@@ -31,7 +31,7 @@ func runTestBatchI64(t *testing.T, tests []i64TestCase) {
 			cfg := &wasmvm.VMConfig{
 				Size: memorySize,
 				Image: &wasmvm.ImageConfig{
-					Type:  "array",
+					Type:  wasmvm.Array,
 					Array: tc.memoryContent,
 					Size:  memorySize,
 				},

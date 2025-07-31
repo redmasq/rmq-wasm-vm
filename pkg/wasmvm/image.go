@@ -4,7 +4,46 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
+	//"golang.org/x/text/cases"
+	//"golang.org/x/text/language"
 )
+
+//go:generate stringer -type=ImageType
+type ImageType byte
+
+const (
+	Unknown ImageType = iota
+	File
+	Array
+	Empty
+	SparseArray
+)
+
+var imageTypeStringToEnum = map[string]ImageType{
+	"unknown":     Unknown,
+	"file":        File,
+	"array":       Array,
+	"empty":       Empty,
+	"sparsearray": SparseArray,
+}
+
+func ParseImageType(s string) (ImageType, error) {
+	key := strings.ToLower(strings.TrimSpace(s))
+	if val, ok := imageTypeStringToEnum[key]; ok {
+		return val, nil
+	}
+	return Unknown, NewImageInitializationError(UnknownImageType, fmt.Sprintf("unknown image type: %q", s))
+}
+
+func (t *ImageType) UnmarshalText(text []byte) error {
+	val, err := ParseImageType(string(text))
+	if err != nil {
+		return err
+	}
+	*t = val
+	return nil
+}
 
 //go:generate stringer -type=ImageInitializationErrorType
 type ImageInitializationErrorType byte
@@ -95,11 +134,39 @@ func NewImageInitializationErrorWithCause(t ImageInitializationErrorType, msg st
 var ReadFile = os.ReadFile
 
 type ImageConfig struct {
-	Type     string             `json:"type"`
+	Type     ImageType          `json:"type"`
 	Filename string             `json:"filename,omitempty"`
 	Array    []uint8            `json:"array,omitempty"`
 	Size     uint64             `json:"size,omitempty"`
 	Sparse   []SparseArrayEntry `json:"sparsearray,omitempty"`
+}
+
+func (ic *ImageConfig) SetType(it ImageType) *ImageConfig {
+	ic.Type = it
+	return ic
+}
+
+func (ic *ImageConfig) SetFilename(filename string) *ImageConfig {
+	ic.Type = File
+	ic.Filename = filename
+	return ic
+}
+
+func (ic *ImageConfig) SetArray(arr []uint8) *ImageConfig {
+	ic.Type = Array
+	ic.Array = arr
+	return ic
+}
+
+func (ic *ImageConfig) SetSize(size uint64) *ImageConfig {
+	ic.Size = size
+	return ic
+}
+
+func (ic *ImageConfig) SetSparseArray(sa []SparseArrayEntry) *ImageConfig {
+	ic.Type = SparseArray
+	ic.Sparse = sa
+	return ic
 }
 
 type SparseArrayEntry struct {
@@ -144,20 +211,20 @@ const errmsg_SpareArrayUnknown = "sparearray: unknown error"
 func PopulateImage(mem []byte, cfg *ImageConfig, strict bool) ([]string, error) {
 	warns := []string{}
 	switch cfg.Type {
-	case "file":
+	case File:
 		warns, err := handleFile(cfg, warns, mem, strict)
 		return warns, err
-	case "array":
+	case Array:
 		warns, err := handleArray(cfg, mem, warns, strict)
 		return warns, err
-	case "empty":
+	case Empty:
 		warns, err := handleEmpty(cfg, mem, warns, strict)
 		return warns, err
-	case "sparsearray":
+	case SparseArray:
 		warns, err := handleSparse(cfg, mem, strict, warns)
 		return warns, err
 	default:
-		return warns, NewImageInitializationError(UnknownImageType, fmt.Sprintf("unknown image type: %s", cfg.Type))
+		return warns, NewImageInitializationError(UnknownImageType, fmt.Sprintf("unknown image type: %s", cfg.Type.String()))
 	}
 }
 

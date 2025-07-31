@@ -322,7 +322,7 @@ func TestErrorGenerators(t *testing.T) {
 	cfg := &wasmvm.VMConfig{
 		Size: memorySize,
 		Image: &wasmvm.ImageConfig{
-			Type:  "array",
+			Type:  wasmvm.Array,
 			Array: memoryContent,
 			Size:  memorySize,
 		},

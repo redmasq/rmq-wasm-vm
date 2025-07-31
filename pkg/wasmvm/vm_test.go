@@ -103,7 +103,7 @@ func TestNewVM_StartOverride(t *testing.T) {
 
 func TestNewVM_ImageEmptyType(t *testing.T) {
 	img := &wasmvm.ImageConfig{
-		Type: "empty",
+		Type: wasmvm.Empty,
 		Size: 3,
 	}
 	cfg := &wasmvm.VMConfig{
@@ -118,7 +118,7 @@ func TestNewVM_ImageEmptyType(t *testing.T) {
 
 func TestNewVM_ImageSparseArrayStrict(t *testing.T) {
 	img := &wasmvm.ImageConfig{
-		Type: "sparsearray",
+		Type: wasmvm.SparseArray,
 		Size: 4,
 		Sparse: []wasmvm.SparseArrayEntry{
 			{Offset: 0, Array: []byte{1, 2}},
@@ -138,7 +138,7 @@ func TestNewVM_ImageSparseArrayStrict(t *testing.T) {
 
 func TestNewVM_ImageSparseArrayLenient(t *testing.T) {
 	img := &wasmvm.ImageConfig{
-		Type: "sparsearray",
+		Type: wasmvm.SparseArray,
 		Size: 4,
 		Sparse: []wasmvm.SparseArrayEntry{
 			{Offset: 0, Array: []byte{1, 2}},
@@ -158,7 +158,7 @@ func TestNewVM_ImageSparseArrayLenient(t *testing.T) {
 
 func TestNewVM_ImageUnknownType(t *testing.T) {
 	img := &wasmvm.ImageConfig{
-		Type: "nonsense",
+		Type: wasmvm.ImageType(int(wasmvm.SparseArray) + 1),
 		Size: 4,
 	}
 	cfg := &wasmvm.VMConfig{

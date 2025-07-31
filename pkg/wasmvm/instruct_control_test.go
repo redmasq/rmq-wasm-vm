@@ -30,7 +30,7 @@ func runTestBatchControl(t *testing.T, tests []controlTestCase) {
 			cfg := &wasmvm.VMConfig{
 				Size: memorySize,
 				Image: &wasmvm.ImageConfig{
-					Type:  "array",
+					Type:  wasmvm.Array,
 					Array: tc.memoryContent,
 					Size:  memorySize,
 				},
