@@ -879,5 +879,104 @@ func TestParseImageConfig_JSON_BogusInput(t *testing.T) {
 }
 
 func TestImageConfig_Fluent(t *testing.T) {
+	tests := []struct {
+		name   string
+		method func(ic *wasmvm.ImageConfig) *wasmvm.ImageConfig
+		expect wasmvm.ImageConfig
+	}{
+		{
+			name: "check SetType",
+			method: func(ic *wasmvm.ImageConfig) *wasmvm.ImageConfig {
+				ic.SetType(wasmvm.File)
+				return ic
+			},
+			expect: wasmvm.ImageConfig{
+				Type: wasmvm.File,
+			},
+		},
+		{
+			name: "check SetFilename",
+			method: func(ic *wasmvm.ImageConfig) *wasmvm.ImageConfig {
+				ic.SetFilename("fake.file")
+				return ic
+			},
+			expect: wasmvm.ImageConfig{
+				Type:     wasmvm.File,
+				Filename: "fake.file",
+			},
+		},
+		{
+			name: "check SetArray",
+			method: func(ic *wasmvm.ImageConfig) *wasmvm.ImageConfig {
+				ic.SetArray([]uint8{0xCA, 0xFE, 0xD0, 0x0D})
+				return ic
+			},
+			expect: wasmvm.ImageConfig{
+				Type:  wasmvm.Array,
+				Array: []uint8{0xCA, 0xFE, 0xD0, 0x0D},
+			},
+		},
+		{
+			name: "check SetEmpty",
+			method: func(ic *wasmvm.ImageConfig) *wasmvm.ImageConfig {
+				ic.SetSize(5)
+				return ic
+			},
+			expect: wasmvm.ImageConfig{
+				Type: wasmvm.Unknown,
+				Size: uint64(5),
+			},
+		},
+		{
+			name: "check SetSparseArray",
+			method: func(ic *wasmvm.ImageConfig) *wasmvm.ImageConfig {
+				ic.SetSparseArray([]wasmvm.SparseArrayEntry{
+					{Offset: 0, Array: []uint8{8}},
+					{Offset: 1, Array: []uint8{9}},
+					{Offset: 2, Array: []uint8{6}},
+				})
+				return ic
+			},
+			expect: wasmvm.ImageConfig{
+				Type: wasmvm.SparseArray,
+				Sparse: []wasmvm.SparseArrayEntry{
+					{Offset: 0, Array: []uint8{8}},
+					{Offset: 1, Array: []uint8{9}},
+					{Offset: 2, Array: []uint8{6}},
+				},
+			},
+		},
+		{
+			name: "check Mixed",
+			method: func(ic *wasmvm.ImageConfig) *wasmvm.ImageConfig {
+				ic.SetSparseArray([]wasmvm.SparseArrayEntry{
+					{Offset: 0, Array: []uint8{8}},
+					{Offset: 1, Array: []uint8{9}},
+					{Offset: 2, Array: []uint8{6}},
+				})
+				ic.SetFilename("fake.file")
+				ic.SetSize(4)
+				ic.SetArray([]uint8{0x00})
+				return ic
+			},
+			expect: wasmvm.ImageConfig{
+				Type:     wasmvm.Array,
+				Filename: "fake.file",
+				Size:     uint64(4),
+				Array:    []uint8{uint8(0x00)},
+				Sparse: []wasmvm.SparseArrayEntry{
+					{Offset: 0, Array: []uint8{8}},
+					{Offset: 1, Array: []uint8{9}},
+					{Offset: 2, Array: []uint8{6}},
+				},
+			},
+		},
+	}
 
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ic := test.method(&wasmvm.ImageConfig{})
+			assert.Equal(t, &test.expect, ic)
+		})
+	}
 }
