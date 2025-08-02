@@ -45,9 +45,8 @@ jobs:
         awk -v coverage="$coverage" -v threshold="$threshold" 'BEGIN {if (coverage+0 < threshold) exit 1}'
     - name: Convert coverage.out to lcov
       run: |
-        go install github.com/AlekSi/gocov-xml@latest
-        go install github.com/axw/gocov/gocov@latest
-        gocov test ./... | gocov-xml > coverage.lcov
+        go install github.com/jandelgado/gcov2lcov@latest
+        gcov2lcov -infile coverage.out -outfile coverage.lcov
 
     - name: Upload coverage to Coveralls
       uses: coverallsapp/github-action@v2
