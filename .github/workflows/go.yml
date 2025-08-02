@@ -8,6 +8,13 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      dummy:
+        description: 'A placeholder'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -36,9 +43,14 @@ jobs:
         echo "Total coverage: $coverage%"
         threshold=85.0
         awk -v coverage="$coverage" -v threshold="$threshold" 'BEGIN {if (coverage+0 < threshold) exit 1}'
+    - name: Convert coverage.out to lcov
+      run: |
+        go install github.com/AlekSi/gocov-xml@latest
+        go install github.com/axw/gocov/gocov@latest
+        gocov test ./... | gocov-xml > coverage.lcov
 
     - name: Upload coverage to Coveralls
       uses: coverallsapp/github-action@v2
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
-        path-to-lcov: coverage.out
+        path-to-lcov: coverage.lcov
