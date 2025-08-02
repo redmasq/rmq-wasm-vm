@@ -9,167 +9,303 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewVMBasic(t *testing.T) {
-	cfg := &wasmvm.VMConfig{
-		Size: 1,
+type vmTestCase struct {
+	name                        string
+	config                      *wasmvm.VMConfig
+	expect                      *wasmvm.VMState
+	checkError                  bool
+	checkExpect                 bool
+	checkMemorySize             bool
+	checkMemoryContent          bool
+	expectError                 *wasmvm.VMInitializationError
+	expectSize                  uint64
+	replaceReadFile             func(string) ([]byte, error)
+	prepareImage                func(t *testing.T) *wasmvm.ImageConfig
+	expectMemoryContent         []byte
+	clearInstructionMapOnActual bool
+}
+
+func executeVMTests(t *testing.T, tests []vmTestCase) {
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			func() {
+				if test.replaceReadFile != nil {
+					original := wasmvm.ReadFile
+					defer func() { wasmvm.ReadFile = original }()
+					wasmvm.ReadFile = test.replaceReadFile
+				}
+				if test.prepareImage != nil {
+					test.config.Image = test.prepareImage(t)
+				}
+				vm, err := wasmvm.NewVM(test.config)
+				if test.checkError {
+					assert.Error(t, err)
+					assert.IsType(t, test.expectError, err)
+					assert.Equal(t, test.expectError, err)
+				} else {
+					assert.NoError(t, err)
+				}
+				if test.clearInstructionMapOnActual {
+					vm.InstructionMap = nil
+				}
+				if test.checkMemorySize {
+					assert.Equal(t, test.expectSize, uint64(len(vm.Memory)))
+				}
+				if test.checkExpect {
+					assert.Equal(t, test.expect, vm)
+				}
+			}()
+
+		})
 	}
-	vm, err := wasmvm.NewVM(cfg)
+
+}
+
+func TestNewVM(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			name: "success - NewVM Basic",
+			config: &wasmvm.VMConfig{
+				Size: 1,
+			},
+			checkMemorySize: true,
+			expectSize:      1,
+		},
+		{
+			name: "success - NewVM File",
+			config: &wasmvm.VMConfig{
+				Size:  2,
+				Image: (&wasmvm.ImageConfig{}).SetFilename("testImage.file"),
+			},
+			checkMemorySize:     true,
+			expectSize:          2,
+			checkMemoryContent:  true,
+			expectMemoryContent: []byte{0x42},
+			replaceReadFile: func(path string) ([]byte, error) {
+				return []byte{0x42}, nil
+			},
+		},
+		{
+			name:       "failure - NewVM zero nil config",
+			checkError: true,
+			expectError: &wasmvm.VMInitializationError{
+				Type: wasmvm.VMConfigRequired,
+				Msg:  "config is required",
+			},
+		},
+		{
+			name:       "failure - NewVM zero size and no image",
+			config:     &wasmvm.VMConfig{},
+			checkError: true,
+			expectError: &wasmvm.VMInitializationError{
+				Type: wasmvm.MissingSizeOrFlatMemory,
+				Msg:  "either Size or FlatMemory must be specified",
+			},
+		},
+		{
+			name: "success - NewVM FlatMemory",
+			config: &wasmvm.VMConfig{
+				FlatMemory: []byte{1, 2, 3},
+			},
+			checkMemorySize:     true,
+			expectSize:          3,
+			checkMemoryContent:  true,
+			expectMemoryContent: []byte{1, 2, 3},
+		},
+		{
+			name: "success - ring 0 strict",
+			config: &wasmvm.VMConfig{
+				Size:   1,
+				Strict: true,
+				Rings: map[uint8]wasmvm.RingConfig{
+					1: {Enabled: true},
+				},
+			},
+			expect: &wasmvm.VMState{
+				Memory: []byte{0x00},
+				Config: &wasmvm.VMConfig{
+					Size:   1,
+					Strict: true,
+					Rings: map[uint8]wasmvm.RingConfig{
+						0: {Enabled: true},
+						1: {Enabled: true},
+					},
+				},
+			},
+		},
+		{
+			name: "warn - ring 0 non-strict",
+			config: &wasmvm.VMConfig{
+				Size:   42,
+				Strict: false,
+				Rings: map[uint8]wasmvm.RingConfig{
+					0: {Enabled: true},
+				},
+			},
+			checkExpect:                 true,
+			clearInstructionMapOnActual: true,
+			expect: &wasmvm.VMState{
+				Memory: make([]byte, 42),
+				Config: &wasmvm.VMConfig{
+					Size:   42,
+					Strict: false,
+					Rings: map[uint8]wasmvm.RingConfig{
+						0: {Enabled: true},
+					},
+				},
+				ImageInitWarn: []string{
+					"Ring 0 redefinition ignored",
+				},
+			},
+		},
+		{
+			name: "failure - ring 0 strict",
+			config: &wasmvm.VMConfig{
+				Size:   1,
+				Strict: true,
+				Rings: map[uint8]wasmvm.RingConfig{
+					0: {Enabled: true},
+				},
+			},
+			checkError: true,
+			expectError: &wasmvm.VMInitializationError{
+				Type: wasmvm.StrictModeAttemptRing0Reconfigure,
+				Msg:  "ring 0 cannot be reconfigured (strict mode)",
+			},
+		},
+		{
+			name: "success - Start Override",
+			config: &wasmvm.VMConfig{
+				FlatMemory:    make([]byte, 10),
+				StartOverride: uint64(5),
+			},
+			checkExpect:                 true,
+			clearInstructionMapOnActual: true,
+			expect: &wasmvm.VMState{
+				Memory: make([]byte, 10),
+				Config: &wasmvm.VMConfig{
+					FlatMemory: make([]byte, 10),
+					Rings: map[uint8]wasmvm.RingConfig{
+						0: {Enabled: true},
+					},
+					StartOverride: uint64(5),
+				},
+				PC: uint64(5),
+			},
+		},
+		{
+			name: "success - NewVM Type Empty",
+			config: &wasmvm.VMConfig{
+				Size:  3,
+				Image: (&wasmvm.ImageConfig{}).SetType(wasmvm.Empty).SetSize(3),
+			},
+			checkMemorySize:     true,
+			expectSize:          3,
+			checkMemoryContent:  true,
+			expectMemoryContent: []byte{0, 0, 0},
+		},
+		{
+			name: "failure - NewVM Type SparseArray",
+			config: &wasmvm.VMConfig{
+				Size:   3,
+				Strict: true,
+				Image: (&wasmvm.ImageConfig{}).SetType(wasmvm.SparseArray).SetSparseArray(
+					[]wasmvm.SparseArrayEntry{
+						{Offset: 0, Array: []byte{1, 2}},
+						{Offset: 3, Array: []byte{9, 9}}, // 4th byte out of bounds
+					},
+				),
+			},
+			checkError: true,
+			expectError: &wasmvm.VMInitializationError{
+				Type: wasmvm.VMImageError,
+				Msg:  "an error occurred during Image initialization: [SparseEntryOutOfBounds] sparsearray entry out of bounds detected",
+				Cause: &wasmvm.ImageInitializationError{
+					Type: wasmvm.SparseEntryOutOfBounds,
+					Msg:  "sparsearray entry out of bounds detected",
+					Meta: wasmvm.ImageErrorSparseMetaData{
+						ConfigSize: uint64(0),
+						MemSize:    uint64(3),
+						ProblemEntries: []wasmvm.SparseArrayErrorEntry{
+							{Offset: 3, Array: []uint8{9, 9}, ErrorType: wasmvm.SparseEntryOutOfBounds}, // out of bounds
+						},
+					},
+				},
+				Meta: (&wasmvm.ImageConfig{}).SetType(wasmvm.SparseArray).SetSparseArray(
+					[]wasmvm.SparseArrayEntry{
+						{Offset: 0, Array: []byte{1, 2}},
+						{Offset: 3, Array: []byte{9, 9}}, // 4th byte out of bounds
+					},
+				),
+			},
+		},
+		{
+			name: "warn - NewVM Type SparseArray Lenient",
+			config: &wasmvm.VMConfig{
+				Size:   3,
+				Strict: false,
+				Image: (&wasmvm.ImageConfig{}).SetType(wasmvm.SparseArray).SetSparseArray(
+					[]wasmvm.SparseArrayEntry{
+						{Offset: 0, Array: []byte{1, 2}},
+						{Offset: 3, Array: []byte{9, 9}}, // 4th byte out of bounds
+					},
+				),
+			},
+			checkExpect:                 true,
+			clearInstructionMapOnActual: true,
+			expect: &wasmvm.VMState{
+				Memory: []byte{0x01, 0x02, 0x00},
+				Config: &wasmvm.VMConfig{
+					Size:   3,
+					Strict: false,
+					Image: (&wasmvm.ImageConfig{}).SetType(wasmvm.SparseArray).SetSparseArray(
+						[]wasmvm.SparseArrayEntry{
+							{Offset: 0, Array: []byte{1, 2}},
+							{Offset: 3, Array: []byte{9, 9}}, // 4th byte out of bounds
+						},
+					),
+					Rings: map[uint8]wasmvm.RingConfig{
+						0: {Enabled: true},
+					},
+				},
+				ImageInitWarn: []string{
+					"sparsearray entry out of bounds at offset 3",
+					"sparsearray entry out of bounds at offset 4",
+				},
+			},
+		},
+		{
+			name: "failure - NewVM Type Unknown",
+			config: &wasmvm.VMConfig{
+				Size:   3,
+				Strict: true,
+				Image:  (&wasmvm.ImageConfig{}).SetType(wasmvm.Unknown),
+			},
+			checkError: true,
+			expectError: &wasmvm.VMInitializationError{
+				Type: wasmvm.VMImageError,
+				Msg:  "an error occurred during Image initialization: [UnknownImageType] unknown image type: Unknown",
+				Cause: &wasmvm.ImageInitializationError{
+					Type: wasmvm.UnknownImageType,
+					Msg:  "unknown image type: Unknown",
+				},
+				Meta: (&wasmvm.ImageConfig{}).SetType(wasmvm.Unknown),
+			},
+		},
+	}
+	executeVMTests(t, tests)
+}
+
+func TestCloneEmpty(t *testing.T) {
+	var vmc *wasmvm.VMConfig
+	testvmc, err := vmc.QuickClone()
+	assert.Nil(t, testvmc)
 	assert.NoError(t, err)
-	assert.Equal(t, len(vm.Memory), 1)
 }
 
-func TestNewVMFileImage(t *testing.T) {
-	original := wasmvm.ReadFile
-	defer func() { wasmvm.ReadFile = original }()
-
-	wasmvm.ReadFile = func(path string) ([]byte, error) {
-		return []byte{0x42}, nil
-	}
-
-	image, err := wasmvm.ParseImageConfig(
-		[]byte(`{
-	"Type":"file",
-	"Filename":"testImage.json"
-}`))
-
-	assert.NoError(t, err)
-
-	cfg := &wasmvm.VMConfig{
-		Size:  2,
-		Image: image,
-	}
-	vm, err := wasmvm.NewVM(cfg)
-	assert.NoError(t, err)
-	assert.Equal(t, 2, len(vm.Memory))
-	assert.Equal(t, uint8(0x42), vm.Memory[0])
-}
-
-func TestNewVM_MissingSizeAndMemory(t *testing.T) {
-	cfg := &wasmvm.VMConfig{}
-	vm, err := wasmvm.NewVM(cfg)
-	assert.Nil(t, vm)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "either Size or FlatMemory must be specified")
-}
-
-func TestNewVM_FlatMemory(t *testing.T) {
-	mem := []byte{1, 2, 3}
-	cfg := &wasmvm.VMConfig{
-		FlatMemory: mem,
-	}
-	vm, err := wasmvm.NewVM(cfg)
-	require.NoError(t, err)
-	require.NotNil(t, vm)
-	assert.Equal(t, mem, vm.Memory)
-}
-
-func TestNewVM_RingZeroStrict(t *testing.T) {
-	cfg := &wasmvm.VMConfig{
-		Size:   1,
-		Strict: true,
-		Rings: map[uint8]wasmvm.RingConfig{
-			0: {Enabled: true},
-		},
-	}
-	vm, err := wasmvm.NewVM(cfg)
-	assert.Nil(t, vm)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "ring 0 cannot be reconfigured")
-}
-
-func TestNewVM_RingZeroNonStrictWarns(t *testing.T) {
-	cfg := &wasmvm.VMConfig{
-		Size: 1,
-		Rings: map[uint8]wasmvm.RingConfig{
-			0: {Enabled: true},
-		},
-	}
-	vm, err := wasmvm.NewVM(cfg)
-	require.NoError(t, err)
-	assert.NotNil(t, vm)
-	assert.Contains(t, vm.Config.Rings, uint8(0))
-}
-
-func TestNewVM_StartOverride(t *testing.T) {
-	start := uint64(5)
-	cfg := &wasmvm.VMConfig{
-		Size:          10,
-		StartOverride: &start,
-	}
-	vm, err := wasmvm.NewVM(cfg)
-	require.NoError(t, err)
-	assert.Equal(t, start, vm.PC)
-}
-
-func TestNewVM_ImageEmptyType(t *testing.T) {
-	img := &wasmvm.ImageConfig{
-		Type: wasmvm.Empty,
-		Size: 3,
-	}
-	cfg := &wasmvm.VMConfig{
-		Size:  3,
-		Image: img,
-	}
-	vm, err := wasmvm.NewVM(cfg)
-	require.NoError(t, err)
-	assert.NotNil(t, vm)
-	assert.Equal(t, []byte{0, 0, 0}, vm.Memory)
-}
-
-func TestNewVM_ImageSparseArrayStrict(t *testing.T) {
-	img := &wasmvm.ImageConfig{
-		Type: wasmvm.SparseArray,
-		Size: 4,
-		Sparse: []wasmvm.SparseArrayEntry{
-			{Offset: 0, Array: []byte{1, 2}},
-			{Offset: 3, Array: []byte{9, 9}}, // 4th byte out of bounds
-		},
-	}
-	cfg := &wasmvm.VMConfig{
-		Size:   4,
-		Image:  img,
-		Strict: true,
-	}
-	vm, err := wasmvm.NewVM(cfg)
-	assert.Nil(t, vm)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "sparsearray entry out of bounds")
-}
-
-func TestNewVM_ImageSparseArrayLenient(t *testing.T) {
-	img := &wasmvm.ImageConfig{
-		Type: wasmvm.SparseArray,
-		Size: 4,
-		Sparse: []wasmvm.SparseArrayEntry{
-			{Offset: 0, Array: []byte{1, 2}},
-			{Offset: 3, Array: []byte{9, 9}}, // 4th byte out of bounds
-		},
-	}
-	cfg := &wasmvm.VMConfig{
-		Size:  4,
-		Image: img,
-		// Strict is false
-	}
-	vm, err := wasmvm.NewVM(cfg)
-	require.NoError(t, err)
-	assert.NotNil(t, vm)
-	assert.Contains(t, vm.ImageInitWarn, "sparsearray entry out of bounds at offset 4")
-}
-
-func TestNewVM_ImageUnknownType(t *testing.T) {
-	img := &wasmvm.ImageConfig{
-		Type: wasmvm.ImageType(int(wasmvm.SparseArray) + 1),
-		Size: 4,
-	}
-	cfg := &wasmvm.VMConfig{
-		Size:   4,
-		Image:  img,
-		Strict: true,
-	}
-	vm, err := wasmvm.NewVM(cfg)
-	assert.Nil(t, vm)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown image type")
+func TestErrStr(t *testing.T) {
+	errStr := wasmvm.VmInitErrStr(wasmvm.VMInitializationErrorType(byte(wasmvm.StrictModeAttemptRing0Reconfigure) + 1))
+	assert.Contains(t, errStr, "unknown vm initialization error")
 }
 
 func TestVMState_ExecuteNext_Trap(t *testing.T) {

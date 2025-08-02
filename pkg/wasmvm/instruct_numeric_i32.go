@@ -9,14 +9,14 @@ import (
 
 // 0x43 const.i32: reads 4 octets little endian and pushes unit32 to stack
 func CONST_I32(vm *VMState) error {
-	const width = 1 + WIDTH_I32
+	const width = 1 + WidthI32
 	if vm.PC+width > uint64(len(vm.Memory)) {
 		vm.Trap = true
 		vm.TrapReason = "CONST_I32: Out of bounds"
 		return errors.New(vm.TrapReason)
 	}
 	span1 := vm.PC + 1
-	span2 := span1 + WIDTH_I32
+	span2 := span1 + WidthI32
 
 	val := binary.LittleEndian.Uint32(vm.Memory[span1:span2])
 	vm.ValueStack.PushInt32(val)

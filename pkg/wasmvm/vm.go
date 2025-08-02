@@ -1,6 +1,7 @@
 package wasmvm
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -21,12 +22,12 @@ type VMConfig struct {
 	FlatMemory    []byte // Optional: existing memory
 	Strict        bool
 	Image         *ImageConfig
-	Rings         map[uint8]RingConfig // 0-255
-	Stdin         io.Reader
-	Stdout        io.Writer
-	Stderr        io.Writer
-	ExposedFuncs  map[string]*ExposedFunc
-	StartOverride *uint64 // Optional entry point override
+	Rings         map[uint8]RingConfig    // 0-255
+	Stdin         io.Reader               `json:"-"`
+	Stdout        io.Writer               `json:"-"`
+	Stderr        io.Writer               `json:"-"`
+	ExposedFuncs  map[string]*ExposedFunc `json:"-"`
+	StartOverride uint64                  // Optional entry point override
 }
 
 // This will eventually provide a function pointer for
@@ -39,9 +40,11 @@ type ExposedFunc struct {
 // Number of octets in types so far
 // As a side note, I'm working with uint values
 // unless otherwise specified
-const WIDTH_I32 = 4
-const WIDTH_I64 = 8
-const WIDTH_F32 = 4
+const (
+	WidthI32 = 4
+	WidthI64 = 8
+	WidthF32 = 4
+)
 
 // The actual VM state itself. Right now, we are only assuming a
 // single execution context. I'll need to refactor this when
@@ -63,12 +66,113 @@ type VMState struct {
 	// Add more state as needed
 }
 
-// NewVM - Accepts VMConfig and returns a constructed VMConfig or error
-func NewVM(config *VMConfig) (*VMState, error) {
-	if config.Size == 0 && config.FlatMemory == nil {
-		return nil, errors.New("either Size or FlatMemory must be specified")
+//go:generate stringer -type=VMInitializationErrorType
+type VMInitializationErrorType byte
+
+const (
+	UndefinedVMInitError VMInitializationErrorType = iota
+	VMConfigInternalError
+	VMConfigRequired
+	VMImageError
+	MissingSizeOrFlatMemory
+	StrictModeAttemptRing0Reconfigure
+)
+
+type VMInitializationError struct {
+	Type  VMInitializationErrorType
+	Msg   string
+	Cause error
+	Meta  any
+}
+
+func NewVMInitializationError(eType VMInitializationErrorType, msg string) error {
+	return &VMInitializationError{
+		Type: eType,
+		Msg:  msg,
 	}
-	mem := config.FlatMemory
+}
+
+func NewVMInitializationErrorWithCauseOrMeta(eType VMInitializationErrorType, msg string, cause error, meta any) error {
+	return &VMInitializationError{
+		Type:  eType,
+		Msg:   msg,
+		Cause: cause,
+		Meta:  meta,
+	}
+}
+
+var vmInitDefaultMessageTemplates = map[VMInitializationErrorType]string{
+	UndefinedVMInitError:              "unknown VMInitializationErrorType: %s",
+	VMConfigRequired:                  "config is required",
+	VMConfigInternalError:             "an internal error occurred: %s",
+	VMImageError:                      "an error occurred during Image initialization: %s",
+	MissingSizeOrFlatMemory:           "either Size or FlatMemory must be specified",
+	StrictModeAttemptRing0Reconfigure: "ring 0 cannot be reconfigured (strict mode)",
+}
+
+func VmInitErrStr(eType VMInitializationErrorType, paras ...any) string {
+	ermsg, ok := vmInitDefaultMessageTemplates[eType]
+	if !ok || ermsg == "" {
+		ermsg = fmt.Sprintf("unknown vm initialization error[%s,%d]", eType.String(), eType)
+	}
+	if len(paras) > 0 {
+		return fmt.Sprintf(ermsg, paras...)
+	}
+	return ermsg
+}
+
+// Implement the `error` interface
+func (e *VMInitializationError) Error() string {
+	return fmt.Sprintf("[%s] %s", e.Type.String(), e.Msg)
+}
+
+// Another from the `error` interface
+func (e *VMInitializationError) Unwrap() error {
+	return e.Cause
+}
+
+// This won't include the stdin, etc or the exposed functions
+func (vmc *VMConfig) QuickClone() (*VMConfig, error) {
+	if vmc == nil {
+		return nil, nil
+	}
+	origJson, err := json.Marshal(vmc)
+	if err != nil {
+		return nil, err
+	}
+	clone := &VMConfig{}
+	err = json.Unmarshal(origJson, clone)
+	if err != nil {
+		return nil, err
+	}
+	return clone, nil
+}
+
+// NewVM - Accepts VMConfig and returns a constructed VMState or error
+// Note that the VMState.config is a modified clone of the original
+func NewVM(config *VMConfig) (*VMState, error) {
+	if config == nil {
+		return nil, NewVMInitializationError(VMConfigRequired, VmInitErrStr(VMConfigRequired))
+	}
+
+	// We clone the config so that we own this copy
+	// It allows for the config to be recycled without
+	// worry
+	vc, err := config.QuickClone()
+	if err != nil {
+		return nil, NewVMInitializationErrorWithCauseOrMeta(VMConfigInternalError, VmInitErrStr(VMConfigInternalError, err.Error()), err, nil)
+	}
+
+	if vc.Size == 0 && vc.FlatMemory == nil {
+		return nil, NewVMInitializationError(MissingSizeOrFlatMemory, VmInitErrStr(MissingSizeOrFlatMemory))
+	}
+
+	vc.Stdin = config.Stdin
+	vc.Stdout = config.Stdout
+	vc.Stderr = config.Stderr
+	vc.ExposedFuncs = config.ExposedFuncs
+
+	mem := vc.FlatMemory
 	if mem == nil {
 		mem = make([]byte, config.Size)
 	}
@@ -76,36 +180,42 @@ func NewVM(config *VMConfig) (*VMState, error) {
 		Memory:         mem,
 		PC:             0,
 		Trap:           false,
-		Config:         config,
+		Config:         vc,
 		InstructionMap: defaultInstructionMap(),
 	}
 	// Populate memory/image via config.Image (see image.go)
-	if config.Image != nil {
-		warns, err := PopulateImage(mem, config.Image, config.Strict)
+	if vc.Image != nil {
+		warns, err := PopulateImage(mem, vc.Image, vc.Strict)
 		state.ImageInitWarn = warns
 		if err != nil {
-			if config.Strict {
-				return nil, err
+			if vc.Strict {
+				return nil, NewVMInitializationErrorWithCauseOrMeta(VMImageError, VmInitErrStr(VMImageError, err), err, vc.Image)
 			}
+			// It's strange, I walk this line in debug,
+			// but it doesn't show under coverage in VS Code
+			// And stranger yet, warn - NewVM Type SparseArray Lenient
+			// tests for the result
 			state.ImageInitWarn = append(state.ImageInitWarn, err.Error())
 		}
 	}
 	// Initialize rings
-	if config.Rings == nil {
-		config.Rings = make(map[uint8]RingConfig)
+	if vc.Rings == nil {
+		vc.Rings = make(map[uint8]RingConfig)
 	}
+	rc, ok := vc.Rings[0]
+
 	// Ring 0 is always full access; ignore/override if defined
-	if rc, ok := config.Rings[0]; ok && (rc.Enabled || config.Strict) {
-		if config.Strict {
-			return nil, errors.New("ring 0 cannot be reconfigured (strict mode)")
+	if ok && (rc.Enabled || vc.Strict) {
+		if vc.Strict {
+			return nil, NewVMInitializationError(StrictModeAttemptRing0Reconfigure, VmInitErrStr(StrictModeAttemptRing0Reconfigure))
 		}
 		state.ImageInitWarn = append(state.ImageInitWarn, "Ring 0 redefinition ignored")
 	}
-	config.Rings[0] = RingConfig{Enabled: true}
+	vc.Rings[0] = RingConfig{Enabled: true}
 
 	// Set start point
-	if config.StartOverride != nil {
-		state.PC = *config.StartOverride
+	if vc.StartOverride != 0 {
+		state.PC = vc.StartOverride
 	}
 
 	return state, nil

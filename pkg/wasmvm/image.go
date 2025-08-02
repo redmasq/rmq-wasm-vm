@@ -45,6 +45,21 @@ func (t *ImageType) UnmarshalText(text []byte) error {
 	return nil
 }
 
+func (t *ImageType) UnmarshalJSON(data []byte) error {
+	// Try as string first
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		return t.UnmarshalText([]byte(s))
+	}
+	// Try as number
+	var i int
+	if err := json.Unmarshal(data, &i); err == nil {
+		*t = ImageType(i)
+		return nil
+	}
+	return fmt.Errorf("ImageType: cannot unmarshal %s", string(data))
+}
+
 //go:generate stringer -type=ImageInitializationErrorType
 type ImageInitializationErrorType byte
 
@@ -228,10 +243,15 @@ func PopulateImage(mem []byte, cfg *ImageConfig, strict bool) ([]string, error) 
 	}
 }
 
+func createSparseProblemKey(et ImageInitializationErrorType, i int) string {
+	return fmt.Sprintf("%d:%d", byte(et), i)
+}
+
 func handleSparse(cfg *ImageConfig, mem []byte, strict bool, warns []string) ([]string, error) {
+	cache := make(map[string]struct{})
 	problemEntries := []SparseArrayErrorEntry{}
 	eType := UndefinedImageError
-	for _, entry := range cfg.Sparse {
+	for j, entry := range cfg.Sparse {
 		for i, b := range entry.Array {
 			addr := entry.Offset + uint64(i)
 			if addr >= uint64(len(mem)) {
@@ -243,8 +263,14 @@ func handleSparse(cfg *ImageConfig, mem []byte, strict bool, warns []string) ([]
 					} else if eType != SparseEntryMultipleTypes {
 						eType = SparseEntryMultipleTypes
 					}
-					em := *entry.CreateErrorMeta(SparseEntryOutOfBounds)
-					problemEntries = append(problemEntries, em)
+					// Distinct check for entry
+					key := createSparseProblemKey(SparseEntryOutOfBounds, j)
+					if _, ok := cache[key]; !ok {
+						cache[key] = struct{}{}
+						em := *entry.CreateErrorMeta(SparseEntryOutOfBounds)
+						problemEntries = append(problemEntries, em)
+					}
+
 					continue
 				} else {
 					warns = append(warns, fmt.Sprintf(errmsg_SparseArrayOOBNumbered, addr))
@@ -261,8 +287,12 @@ func handleSparse(cfg *ImageConfig, mem []byte, strict bool, warns []string) ([]
 				} else if eType != SparseEntryMultipleTypes {
 					eType = SparseEntryMultipleTypes
 				}
-				em := *entry.CreateErrorMeta(SparseEntryMemoryOverwrite)
-				problemEntries = append(problemEntries, em)
+				key := createSparseProblemKey(SparseEntryOutOfBounds, j)
+				if _, ok := cache[key]; !ok {
+					cache[key] = struct{}{}
+					em := *entry.CreateErrorMeta(SparseEntryMemoryOverwrite)
+					problemEntries = append(problemEntries, em)
+				}
 				continue
 			}
 			if addr < uint64(len(mem)) {
