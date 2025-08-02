@@ -39,9 +39,11 @@ type ExposedFunc struct {
 // Number of octets in types so far
 // As a side note, I'm working with uint values
 // unless otherwise specified
-const WIDTH_I32 = 4
-const WIDTH_I64 = 8
-const WIDTH_F32 = 4
+const (
+	WidthI32 = 4
+	WidthI64 = 8
+	WidthF32 = 4
+)
 
 // The actual VM state itself. Right now, we are only assuming a
 // single execution context. I'll need to refactor this when
@@ -61,6 +63,14 @@ type VMState struct {
 	ValueStack     ValueStack
 
 	// Add more state as needed
+}
+
+type VMErrorType byte
+type VMError struct {
+	Type  VMErrorType
+	Msg   string
+	Cause error
+	Meta  any
 }
 
 // NewVM - Accepts VMConfig and returns a constructed VMConfig or error

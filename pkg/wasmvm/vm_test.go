@@ -9,13 +9,79 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewVMBasic(t *testing.T) {
-	cfg := &wasmvm.VMConfig{
-		Size: 1,
+type vmTestCase struct {
+	name                string
+	config              *wasmvm.VMConfig
+	expect              *wasmvm.VMState
+	checkError          bool
+	checkExpect         bool
+	checkMemorySize     bool
+	checkMemoryContent  bool
+	expectError         wasmvm.VMError
+	expectSize          uint64
+	replaceReadFile     func(string) ([]byte, error)
+	prepareImage        func(t *testing.T) *wasmvm.ImageConfig
+	expectMemoryContent []byte
+}
+
+func executeVMTests(t *testing.T, tests []vmTestCase) {
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			func() {
+				if test.replaceReadFile != nil {
+					original := wasmvm.ReadFile
+					defer func() { wasmvm.ReadFile = original }()
+					wasmvm.ReadFile = test.replaceReadFile
+				}
+				if test.prepareImage != nil {
+					test.config.Image = test.prepareImage(t)
+				}
+				vm, err := wasmvm.NewVM(test.config)
+				if test.checkError {
+					assert.Error(t, err)
+					assert.IsType(t, test.expectError, err)
+					assert.Equal(t, test.expectError, err)
+				} else {
+					assert.NoError(t, err)
+				}
+				if test.checkMemorySize {
+					assert.Equal(t, test.expectSize, uint64(len(vm.Memory)))
+				}
+				if test.checkExpect {
+					assert.Equal(t, test.expect, vm)
+				}
+			}()
+
+		})
 	}
-	vm, err := wasmvm.NewVM(cfg)
-	assert.NoError(t, err)
-	assert.Equal(t, len(vm.Memory), 1)
+
+}
+func TestVM(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			name: "success - NewVM Basic",
+			config: &wasmvm.VMConfig{
+				Size: 1,
+			},
+			checkMemorySize: true,
+			expectSize:      1,
+		},
+		{
+			name: "success - NewVM File",
+			config: &wasmvm.VMConfig{
+				Size:  2,
+				Image: (&wasmvm.ImageConfig{}).SetFilename("testImage.file"),
+			},
+			checkMemorySize:     true,
+			expectSize:          2,
+			checkMemoryContent:  true,
+			expectMemoryContent: []byte{0x42},
+			replaceReadFile: func(path string) ([]byte, error) {
+				return []byte{0x42}, nil
+			},
+		},
+	}
+	executeVMTests(t, tests)
 }
 
 func TestNewVMFileImage(t *testing.T) {
