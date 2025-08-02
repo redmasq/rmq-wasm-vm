@@ -845,7 +845,7 @@ func TestParseImageType_JSON(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		if test.Name != "🤢" {
+		if test.name != "🤢" {
 			name := fmt.Sprintf("ImageType: %s -> %s", test.name, test.expects.String())
 		} else {
 			name := fmt.Sprintf("ImageType: emoji -> %s", test.expects.String())
