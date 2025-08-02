@@ -845,12 +845,12 @@ func TestParseImageType_JSON(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		var name string
-		if test.name != "🤢" {
-			name = fmt.Sprintf("ImageType: %s -> %s", test.name, test.expects.String())
-		} else {
-			name = fmt.Sprintf("ImageType: emoji -> %s", test.expects.String())
-		}
+		//var name string
+		//if test.name != "🤢" {
+		name := fmt.Sprintf("ImageType: %s -> %s", test.name, test.expects.String())
+		//} else {
+		//	name = fmt.Sprintf("ImageType: emoji -> %s", test.expects.String())
+		//}
 		t.Run(name, func(t *testing.T) {
 			t.Parallel() // This is actually safe for parallel
 			var iType wasmvm.ImageType
