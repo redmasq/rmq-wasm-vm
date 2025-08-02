@@ -43,11 +43,11 @@ jobs:
         echo "Total coverage: $coverage%"
         threshold=85.0
         awk -v coverage="$coverage" -v threshold="$threshold" 'BEGIN {if (coverage+0 < threshold) exit 1}'
+    - name: Convert coverage.out to lcov
+      run: go install github.com/AlekSi/gocov-xml@latest && gocov-xml < coverage.out > coverage.lcov
 
     - name: Upload coverage to Coveralls
       uses: coverallsapp/github-action@v2
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
-        path-to-lcov: coverage.out
-        parallel-finished: true
-        parallel: true
+        path-to-lcov: coverage.lcov
