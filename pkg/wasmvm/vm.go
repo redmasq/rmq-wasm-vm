@@ -1,49 +1,8 @@
 package wasmvm
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-)
-
-// TODO: Stub for when ring support comes much later
-type RingConfig struct {
-	Enabled bool
-	// Add additional properties later
-}
-
-// This contains the basic structure of the initialization
-// with the ability to define various parameters. Some of
-// them are meant to be unchanged once execution starts,
-// thus we have a different struct
-type VMConfig struct {
-	Size          uint64 // Memory size in bytes
-	FlatMemory    []byte // Optional: existing memory
-	Strict        bool
-	Image         *ImageConfig
-	Rings         map[uint8]RingConfig    // 0-255
-	Stdin         io.Reader               `json:"-"`
-	Stdout        io.Writer               `json:"-"`
-	Stderr        io.Writer               `json:"-"`
-	ExposedFuncs  map[string]*ExposedFunc `json:"-"`
-	StartOverride uint64                  // Optional entry point override
-}
-
-// This will eventually provide a function pointer for
-// functions exposed to anything running in the VM
-type ExposedFunc struct {
-	Parameters map[string]interface{} // Metadata for the function
-	Function   func(*VMState, ...interface{}) error
-}
-
-// Number of octets in types so far
-// As a side note, I'm working with uint values
-// unless otherwise specified
-const (
-	WidthI32 = 4
-	WidthI64 = 8
-	WidthF32 = 4
 )
 
 // The actual VM state itself. Right now, we are only assuming a
@@ -66,25 +25,6 @@ type VMState struct {
 	// Add more state as needed
 }
 
-//go:generate stringer -type=VMInitializationErrorType
-type VMInitializationErrorType byte
-
-const (
-	UndefinedVMInitError VMInitializationErrorType = iota
-	VMConfigInternalError
-	VMConfigRequired
-	VMImageError
-	MissingSizeOrFlatMemory
-	StrictModeAttemptRing0Reconfigure
-)
-
-type VMInitializationError struct {
-	Type  VMInitializationErrorType
-	Msg   string
-	Cause error
-	Meta  any
-}
-
 func NewVMInitializationError(eType VMInitializationErrorType, msg string) error {
 	return &VMInitializationError{
 		Type: eType,
@@ -99,53 +39,6 @@ func NewVMInitializationErrorWithCauseOrMeta(eType VMInitializationErrorType, ms
 		Cause: cause,
 		Meta:  meta,
 	}
-}
-
-var vmInitDefaultMessageTemplates = map[VMInitializationErrorType]string{
-	UndefinedVMInitError:              "unknown VMInitializationErrorType: %s",
-	VMConfigRequired:                  "config is required",
-	VMConfigInternalError:             "an internal error occurred: %s",
-	VMImageError:                      "an error occurred during Image initialization: %s",
-	MissingSizeOrFlatMemory:           "either Size or FlatMemory must be specified",
-	StrictModeAttemptRing0Reconfigure: "ring 0 cannot be reconfigured (strict mode)",
-}
-
-func VmInitErrStr(eType VMInitializationErrorType, paras ...any) string {
-	ermsg, ok := vmInitDefaultMessageTemplates[eType]
-	if !ok || ermsg == "" {
-		ermsg = fmt.Sprintf("unknown vm initialization error[%s,%d]", eType.String(), eType)
-	}
-	if len(paras) > 0 {
-		return fmt.Sprintf(ermsg, paras...)
-	}
-	return ermsg
-}
-
-// Implement the `error` interface
-func (e *VMInitializationError) Error() string {
-	return fmt.Sprintf("[%s] %s", e.Type.String(), e.Msg)
-}
-
-// Another from the `error` interface
-func (e *VMInitializationError) Unwrap() error {
-	return e.Cause
-}
-
-// This won't include the stdin, etc or the exposed functions
-func (vmc *VMConfig) QuickClone() (*VMConfig, error) {
-	if vmc == nil {
-		return nil, nil
-	}
-	origJson, err := json.Marshal(vmc)
-	if err != nil {
-		return nil, err
-	}
-	clone := &VMConfig{}
-	err = json.Unmarshal(origJson, clone)
-	if err != nil {
-		return nil, err
-	}
-	return clone, nil
 }
 
 // NewVM - Accepts VMConfig and returns a constructed VMState or error
