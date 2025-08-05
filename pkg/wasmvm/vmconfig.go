@@ -70,10 +70,17 @@ func (vmc *VMConfig) QuickClone() (*VMConfig, error) {
 		return nil, nil
 	}
 	origJson, err := json.Marshal(vmc)
+
+	// Scaffolding to test this would involve
+	// force injecting a bug
 	if err != nil {
 		return nil, err
 	}
 	clone := &VMConfig{}
+
+	// This part isn't really testable
+	// In fact, it would mean there is a problem
+	// with the JSON parsing
 	err = json.Unmarshal(origJson, clone)
 	if err != nil {
 		return nil, err
@@ -224,8 +231,17 @@ func (vmc *VMConfig) BuildVMState() (*VMState, error) {
 // This will eventually provide a function pointer for
 // functions exposed to anything running in the VM
 type ExposedFunc struct {
+
+	// TODO: Consider making this something like map[string]reflect.Type
+	// Or some []struct{} that contains the name and exposed arguments
+	// Also, as far as I know, wasm doesn't support generic or variadic
+	// functions. I suspect the latter can be handled via an array; however,
+	// I might try to look into "supporting" it via type erasure or something.
+	// For this, I might just forbid generics as part of signatures, and require
+	// that they be "wrapped" for this
+	// I'll cross that bridge when I get to it.
 	Parameters map[string]interface{} // Metadata for the function
-	Function   func(*VMState, ...interface{}) error
+	Function   *func(*VMState, ...interface{}) error
 }
 
 func NewVMFluentError[K comparable, O any](meta VMErrorMeta[K, O]) error {

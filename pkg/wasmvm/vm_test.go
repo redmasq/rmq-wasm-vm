@@ -341,7 +341,7 @@ func TestVMState_MainLoop_ErrorOutput(t *testing.T) {
 		Stdout: &buf,
 		Stderr: &buf,
 	}
-	vm, err := wasmvm.NewVM(cfg)
+	vm, err := cfg.BuildVMState()
 	require.NoError(t, err)
 	vm.Memory[0] = 0xFF // Will cause unknown instruction
 	vm.MainLoop()
