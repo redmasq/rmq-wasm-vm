@@ -14,11 +14,12 @@ func _() {
 	_ = x[VMImageError-3]
 	_ = x[MissingSizeOrFlatMemory-4]
 	_ = x[StrictModeAttemptRing0Reconfigure-5]
+	_ = x[VMRingAlreadyExists-6]
 }
 
-const _VMInitializationErrorType_name = "UndefinedVMInitErrorVMConfigInternalErrorVMConfigRequiredVMImageErrorMissingSizeOrFlatMemoryStrictModeAttemptRing0Reconfigure"
+const _VMInitializationErrorType_name = "UndefinedVMInitErrorVMConfigInternalErrorVMConfigRequiredVMImageErrorMissingSizeOrFlatMemoryStrictModeAttemptRing0ReconfigureVMRingAlreadyExists"
 
-var _VMInitializationErrorType_index = [...]uint8{0, 20, 41, 57, 69, 92, 125}
+var _VMInitializationErrorType_index = [...]uint8{0, 20, 41, 57, 69, 92, 125, 144}
 
 func (i VMInitializationErrorType) String() string {
 	if i >= VMInitializationErrorType(len(_VMInitializationErrorType_index)-1) {
