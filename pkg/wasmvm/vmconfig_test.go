@@ -1,6 +1,8 @@
 package wasmvm_test
 
 import (
+	"fmt"
+	"io"
 	"testing"
 
 	"github.com/redmasq/rmq-wasm-vm/pkg/wasmvm"
@@ -8,19 +10,26 @@ import (
 )
 
 type fluentTestCase struct {
-	name         string
-	testCase     func() (*wasmvm.VMConfig, error)
-	expectSize   uint64
-	expectMemory []byte
-	expectRings  map[uint8]wasmvm.RingConfig
-	expectEFunc  map[string]*wasmvm.ExposedFunc
-	expectError  bool
+	name                  string
+	testCase              func() (*wasmvm.VMConfig, error)
+	expectSize            uint64
+	expectMemory          []byte
+	expectRings           map[uint8]wasmvm.RingConfig
+	expectEFunc           map[string]*wasmvm.ExposedFunc
+	expectError           bool
+	expectStdin           io.Reader
+	expectStdout          io.Writer
+	expectStderr          io.Writer
+	expectStartupOverride uint64
 }
 
 func TestVMConfig_FluentAPI(t *testing.T) {
 	dummyExposedFunc := func(*wasmvm.VMState, ...interface{}) error {
 		return nil
 	}
+	in := new(io.Reader)
+	out := new(io.Writer)
+
 	tests := []fluentTestCase{
 		{
 			name: "success - SetSize only",
@@ -154,6 +163,34 @@ func TestVMConfig_FluentAPI(t *testing.T) {
 			},
 			expectError: true,
 		},
+		{
+			name: "success - SetStdin Only",
+			testCase: func() (*wasmvm.VMConfig, error) {
+				return new(wasmvm.VMConfig).SetStdin(*in), nil
+			},
+			expectStdin: *in,
+		},
+		{
+			name: "success - SetStdout Only",
+			testCase: func() (*wasmvm.VMConfig, error) {
+				return new(wasmvm.VMConfig).SetStdout(*out), nil
+			},
+			expectStdout: *out,
+		},
+		{
+			name: "success - SetStderr Only",
+			testCase: func() (*wasmvm.VMConfig, error) {
+				return new(wasmvm.VMConfig).SetStderr(*out), nil
+			},
+			expectStderr: *out,
+		},
+		{
+			name: "success - SetStartOverride Only",
+			testCase: func() (*wasmvm.VMConfig, error) {
+				return new(wasmvm.VMConfig).SetStartOverride(137), nil
+			},
+			expectStartupOverride: 137,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -179,6 +216,18 @@ func TestVMConfig_FluentAPI(t *testing.T) {
 			if test.expectEFunc != nil {
 				assert.Equal(t, test.expectEFunc, conf.ExposedFuncs)
 			}
+			if test.expectStdin != nil {
+				assert.Equal(t, in, conf.Stdin)
+			}
+			if test.expectStdout != nil {
+				assert.Equal(t, out, conf.Stdout)
+			}
+			if test.expectStderr != nil {
+				assert.Equal(t, out, conf.Stderr)
+			}
+			if test.expectStartupOverride > 0 {
+				assert.Equal(t, test.expectStartupOverride, conf.StartOverride)
+			}
 		})
 	}
 }
@@ -191,6 +240,14 @@ func TestCloneEmpty(t *testing.T) {
 }
 
 func TestErrStr(t *testing.T) {
-	errStr := wasmvm.VmInitErrStr(wasmvm.VMInitializationErrorType(byte(wasmvm.VMRingAlreadyExists) + 1))
+	typ := wasmvm.VMInitializationErrorType(byte(wasmvm.VMRingAlreadyExists) + 1)
+	errStr := wasmvm.VmInitErrStr(typ)
 	assert.Contains(t, errStr, "unknown vm initialization error")
+	err := &wasmvm.VMInitializationError{
+		Type:  typ,
+		Msg:   errStr,
+		Cause: fmt.Errorf("Test Error"),
+	}
+	assert.Contains(t, err.Error(), "unknown vm initialization error")
+	assert.Contains(t, err.Unwrap().Error(), "Test Error")
 }
