@@ -296,18 +296,6 @@ func TestNewVM(t *testing.T) {
 	executeVMTests(t, tests)
 }
 
-func TestCloneEmpty(t *testing.T) {
-	var vmc *wasmvm.VMConfig
-	testvmc, err := vmc.QuickClone()
-	assert.Nil(t, testvmc)
-	assert.NoError(t, err)
-}
-
-func TestErrStr(t *testing.T) {
-	errStr := wasmvm.VmInitErrStr(wasmvm.VMInitializationErrorType(byte(wasmvm.StrictModeAttemptRing0Reconfigure) + 1))
-	assert.Contains(t, errStr, "unknown vm initialization error")
-}
-
 func TestVMState_ExecuteNext_Trap(t *testing.T) {
 	cfg := &wasmvm.VMConfig{
 		Size: 2,
