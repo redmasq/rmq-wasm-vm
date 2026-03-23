@@ -2,7 +2,6 @@ package wasmvm
 
 import (
 	"encoding/binary"
-	"errors"
 	"math/bits"
 )
 
@@ -10,9 +9,16 @@ import (
 func CONST_I64(vm *VMState) error {
 	const width = 1 + WidthI64
 	if vm.PC+width > uint64(len(vm.Memory)) {
-		vm.Trap = true
-		vm.TrapReason = "CONST_I64: Out of bounds"
-		return errors.New(vm.TrapReason)
+		return vm.SetTrapError(&TrapError{
+			Type:    TrapProgramCounterOutOfBounds,
+			Op:      "CONST_I64",
+			PC:      vm.PC,
+			Message: "CONST_I64: Out of bounds",
+			Meta: map[string]uint64{
+				"width":      width,
+				"memory_len": uint64(len(vm.Memory)),
+			},
+		})
 	}
 	span1 := vm.PC + 1
 	span2 := span1 + WidthI64
@@ -27,14 +33,14 @@ func CONST_I64(vm *VMState) error {
 func ADD_I64(vm *VMState) error {
 	enough, collect := vm.ValueStack.HasAtLeastOfType(2, TYPE_I64)
 	if !enough {
-		return NewStackUnderflowErrorAndSetTrapReason(vm, "ADD_I64")
+		return NewStackUnderflowErrorAndSetTrap(vm, "ADD_I64")
 	}
 
 	// I'm not even sure how I can write an unit test for this
 	// one, especially since there is no multithreading and
 	// the instruction treats it as an atomic operation
 	if !vm.ValueStack.Drop(2, true) {
-		return NewStackCleanupErrorAndSetTrapReason(vm, "ADD_I64")
+		return NewStackCleanupErrorAndSetTrap(vm, "ADD_I64")
 	}
 
 	// Discard the overflow, effectively loops
@@ -48,14 +54,14 @@ func ADD_I64(vm *VMState) error {
 func SUB_I64(vm *VMState) error {
 	enough, collect := vm.ValueStack.HasAtLeastOfType(2, TYPE_I64)
 	if !enough {
-		return NewStackUnderflowErrorAndSetTrapReason(vm, "SUB_I64")
+		return NewStackUnderflowErrorAndSetTrap(vm, "SUB_I64")
 	}
 
 	// I'm not even sure how I can write an unit test for this
 	// one, especially since there is no multithreading and
 	// the instruction treats it as an atomic operation
 	if !vm.ValueStack.Drop(2, true) {
-		return NewStackCleanupErrorAndSetTrapReason(vm, "SUB_I64")
+		return NewStackCleanupErrorAndSetTrap(vm, "SUB_I64")
 	}
 	accumulator, _ := bits.Sub64(collect[0].Value_I64, collect[1].Value_I64, 0)
 
@@ -67,14 +73,14 @@ func SUB_I64(vm *VMState) error {
 func MUL_I64(vm *VMState) error {
 	enough, collect := vm.ValueStack.HasAtLeastOfType(2, TYPE_I64)
 	if !enough {
-		return NewStackUnderflowErrorAndSetTrapReason(vm, "MUL_I64")
+		return NewStackUnderflowErrorAndSetTrap(vm, "MUL_I64")
 	}
 
 	// I'm not even sure how I can write an unit test for this
 	// one, especially since there is no multithreading and
 	// the instruction treats it as an atomic operation
 	if !vm.ValueStack.Drop(2, true) {
-		return NewStackCleanupErrorAndSetTrapReason(vm, "MUL_I64")
+		return NewStackCleanupErrorAndSetTrap(vm, "MUL_I64")
 	}
 
 	// While add and sub has sum/diff followed by carry/borrow
@@ -89,23 +95,26 @@ func MUL_I64(vm *VMState) error {
 func DIVU_I64(vm *VMState) error {
 	enough, collect := vm.ValueStack.HasAtLeastOfType(2, TYPE_I64)
 	if !enough {
-		return NewStackUnderflowErrorAndSetTrapReason(vm, "DIVU_I64")
+		return NewStackUnderflowErrorAndSetTrap(vm, "DIVU_I64")
 	}
 
 	// I'm not even sure how I can write an unit test for this
 	// one, especially since there is no multithreading and
 	// the instruction treats it as an atomic operation
 	if !vm.ValueStack.Drop(2, true) {
-		return NewStackCleanupErrorAndSetTrapReason(vm, "DIVU_I64")
+		return NewStackCleanupErrorAndSetTrap(vm, "DIVU_I64")
 	}
 
 	dividend := collect[0].Value_I64
 	divisor := collect[1].Value_I64
 
 	if divisor == 0 {
-		vm.Trap = true
-		vm.TrapReason = "DIVU_I64: Divide by Zero"
-		return errors.New(vm.TrapReason)
+		return vm.SetTrapError(&TrapError{
+			Type:    TrapDivideByZero,
+			Op:      "DIVU_I64",
+			PC:      vm.PC,
+			Message: "DIVU_I64: Divide by Zero",
+		})
 	}
 
 	accumulator, _ := bits.Div64(uint64(0), dividend, divisor)

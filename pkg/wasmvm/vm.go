@@ -1,9 +1,6 @@
 package wasmvm
 
-import (
-	"errors"
-	"fmt"
-)
+import "fmt"
 
 // The actual VM state itself. Right now, we are only assuming a
 // single execution context. I'll need to refactor this when
@@ -15,7 +12,7 @@ type VMState struct {
 	Memory         []byte
 	PC             uint64 // Program Counter
 	Trap           bool
-	TrapReason     string
+	TrapErr        *TrapError
 	ImageInitWarn  []string
 	Config         *VMConfig
 	InstructionMap map[uint8]Instruction
@@ -39,6 +36,18 @@ func NewVMInitializationErrorWithCauseOrMeta(eType VMInitializationErrorType, ms
 		Cause: cause,
 		Meta:  meta,
 	}
+}
+
+func (vm *VMState) SetTrapError(trap *TrapError) error {
+	if trap == nil {
+		trap = &TrapError{
+			Type:    TrapInternalError,
+			Message: "unknown trap",
+		}
+	}
+	vm.Trap = true
+	vm.TrapErr = trap
+	return trap
 }
 
 // NewVM - Accepts VMConfig and returns a constructed VMState or error
@@ -118,19 +127,34 @@ func NewVM(config *VMConfig) (*VMState, error) {
 // it using the configured InstructionMap. May return an error.
 func (vm *VMState) Step() error {
 	if vm.Trap {
-		return fmt.Errorf("execution trapped: %s", vm.TrapReason)
+		if vm.TrapErr != nil {
+			return vm.TrapErr
+		}
+		return &TrapError{
+			Type:    TrapInternalError,
+			Op:      "STEP",
+			PC:      vm.PC,
+			Message: "execution trapped with no TrapErr",
+		}
 	}
 	if vm.PC >= uint64(len(vm.Memory)) {
-		vm.Trap = true
-		vm.TrapReason = "Program counter out of bounds"
-		return errors.New(vm.TrapReason)
+		return vm.SetTrapError(&TrapError{
+			Type:    TrapProgramCounterOutOfBounds,
+			Op:      "STEP",
+			PC:      vm.PC,
+			Message: "Program counter out of bounds",
+		})
 	}
 	opcode := vm.Memory[vm.PC]
 	handler, ok := vm.InstructionMap[opcode]
 	if !ok {
-		vm.Trap = true
-		vm.TrapReason = fmt.Sprintf("Unknown instruction: 0x%02X", opcode)
-		return errors.New(vm.TrapReason)
+		return vm.SetTrapError(&TrapError{
+			Type:        TrapUnknownInstruction,
+			Op:          "STEP",
+			PC:          vm.PC,
+			Message:     fmt.Sprintf("Unknown instruction: 0x%02X", opcode),
+			Instruction: &opcode,
+		})
 	}
 	return handler(vm)
 }
@@ -140,7 +164,7 @@ func (vm *VMState) MainLoop() {
 	for !vm.Trap {
 		err := vm.Step()
 		if err != nil && vm.Config != nil && vm.Config.Stderr != nil {
-			if vm.TrapReason != "END: Call Stack Empty" {
+			if vm.TrapErr == nil || vm.TrapErr.Type != TrapCallStackEmpty {
 				fmt.Fprintf(vm.Config.Stderr, "Execution error: %v\n", err)
 			}
 		}

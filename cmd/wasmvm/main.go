@@ -40,7 +40,7 @@ var executions = []ExecutionContext{
 	},
 	{
 		Id:    1,
-		Title: "NOP, 8 - 5 = 3, NOP",
+		Title: "NOP, 5 - 8 = -3, NOP",
 		Program: []byte{
 			wasmvm.OP_NOP,
 			wasmvm.OP_CONST_I64, 5, 0, 0, 0, 0, 0, 0, 0,
@@ -78,6 +78,9 @@ func SetupAndRunVM(context *ExecutionContext) (*wasmvm.VMState, error) {
 	// Set PC to 0
 	vm.PC = 0
 	vm.MainLoop()
+	if vm.TrapErr != nil {
+		fmt.Printf("(%d) Trap after execution: %v\n", context.Id, vm.TrapErr)
+	}
 	fmt.Printf("(%d) Memory after execution: %+v\n", context.Id, vm.Memory)
 	fmt.Printf("(%d) Stack after execution: %#v\n", context.Id, vm.ValueStack)
 

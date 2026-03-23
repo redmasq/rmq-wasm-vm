@@ -330,15 +330,18 @@ func TestErrorGenerators(t *testing.T) {
 
 	cases := []struct {
 		reason string
+		trap   wasmvm.TrapType
 		method wasmvm.ErrorGenerator
 	}{
 		{
 			reason: "Stack Underflow",
-			method: wasmvm.NewStackUnderflowErrorAndSetTrapReason,
+			trap:   wasmvm.TrapStackUnderflow,
+			method: wasmvm.NewStackUnderflowErrorAndSetTrap,
 		},
 		{
 			reason: "Stack Cleanup Error",
-			method: wasmvm.NewStackCleanupErrorAndSetTrapReason,
+			trap:   wasmvm.TrapStackCleanup,
+			method: wasmvm.NewStackCleanupErrorAndSetTrap,
 		},
 	}
 
@@ -351,7 +354,12 @@ func TestErrorGenerators(t *testing.T) {
 			err = c.method(vm, "dummy")
 			assert.Error(t, err)
 			assert.True(t, vm.Trap)
-			assert.Equal(t, "dummy: "+c.reason, vm.TrapReason)
+			assert.NotNil(t, vm.TrapErr)
+			if vm.TrapErr != nil {
+				assert.Equal(t, c.trap, vm.TrapErr.Type)
+				assert.Equal(t, "dummy", vm.TrapErr.Op)
+				assert.Equal(t, "dummy: "+c.reason, vm.TrapErr.Message)
+			}
 		})
 	}
 

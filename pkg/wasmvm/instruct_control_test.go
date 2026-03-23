@@ -13,6 +13,8 @@ type controlTestCase struct {
 	memoryContent []byte   // Initial memory content
 	expectTrap    bool     // Expect a trap error
 	trapReason    string   // Expected reason for trap, if any
+	trapType      wasmvm.TrapType
+	trapOp        string
 	expectValue   []uint32 // Expected value pushed on the stack
 	expectPC      uint64   // Expected program counter after execution
 	stackValues   []uint32
@@ -50,11 +52,18 @@ func runTestBatchControl(t *testing.T, tests []controlTestCase) {
 			if tc.expectTrap {
 				assert.Error(t, err)
 				assert.True(t, vm.Trap)
-				assert.Equal(t, tc.trapReason, vm.TrapReason)
+				if tc.trapType != wasmvm.UndefinedTrap || tc.trapOp != "" {
+					assert.NotNil(t, vm.TrapErr)
+					if vm.TrapErr != nil {
+						assert.Equal(t, tc.trapType, vm.TrapErr.Type)
+						assert.Equal(t, tc.trapOp, vm.TrapErr.Op)
+						assert.Equal(t, tc.trapReason, vm.TrapErr.Message)
+					}
+				}
 				assert.Equal(t, tc.expectedStack, vm.ValueStack.Size())
 			} else {
 				assert.NoError(t, err)
-				assert.False(t, vm.Trap, "Trap was raised: "+vm.TrapReason)
+				assert.False(t, vm.Trap)
 				if tc.expectedStack > 0 {
 					assert.Equal(t, tc.expectedStack, vm.ValueStack.Size())
 					for i := range tc.expectValue {
@@ -95,6 +104,8 @@ func TestControl(t *testing.T) {
 			},
 			expectTrap:    true,
 			trapReason:    "END: Call Stack Empty",
+			trapType:      wasmvm.TrapCallStackEmpty,
+			trapOp:        "END",
 			expectPC:      1,
 			expectedStack: 0,
 		},

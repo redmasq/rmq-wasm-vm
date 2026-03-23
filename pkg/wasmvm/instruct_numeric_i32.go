@@ -2,7 +2,6 @@ package wasmvm
 
 import (
 	"encoding/binary"
-	"errors"
 	"math"
 	"math/bits"
 )
@@ -11,9 +10,16 @@ import (
 func CONST_I32(vm *VMState) error {
 	const width = 1 + WidthI32
 	if vm.PC+width > uint64(len(vm.Memory)) {
-		vm.Trap = true
-		vm.TrapReason = "CONST_I32: Out of bounds"
-		return errors.New(vm.TrapReason)
+		return vm.SetTrapError(&TrapError{
+			Type:    TrapProgramCounterOutOfBounds,
+			Op:      "CONST_I32",
+			PC:      vm.PC,
+			Message: "CONST_I32: Out of bounds",
+			Meta: map[string]uint64{
+				"width":      width,
+				"memory_len": uint64(len(vm.Memory)),
+			},
+		})
 	}
 	span1 := vm.PC + 1
 	span2 := span1 + WidthI32
@@ -28,14 +34,14 @@ func CONST_I32(vm *VMState) error {
 func ADD_I32(vm *VMState) error {
 	enough, collect := vm.ValueStack.HasAtLeastOfType(2, TYPE_I32)
 	if !enough {
-		return NewStackUnderflowErrorAndSetTrapReason(vm, "ADD_I32")
+		return NewStackUnderflowErrorAndSetTrap(vm, "ADD_I32")
 	}
 
 	// I'm not even sure how I can write an unit test for this
 	// one, especially since there is no multithreading and
 	// the instruction treats it as an atomic operation
 	if !vm.ValueStack.Drop(2, true) {
-		return NewStackCleanupErrorAndSetTrapReason(vm, "ADD_I32")
+		return NewStackCleanupErrorAndSetTrap(vm, "ADD_I32")
 	}
 	accumulator, _ := bits.Add32(collect[0].Value_I32, collect[1].Value_I32, 0)
 	vm.ValueStack.PushInt32(accumulator)
@@ -47,14 +53,14 @@ func ADD_I32(vm *VMState) error {
 func SUB_I32(vm *VMState) error {
 	enough, collect := vm.ValueStack.HasAtLeastOfType(2, TYPE_I32)
 	if !enough {
-		return NewStackUnderflowErrorAndSetTrapReason(vm, "SUB_I32")
+		return NewStackUnderflowErrorAndSetTrap(vm, "SUB_I32")
 	}
 
 	// I'm not even sure how I can write an unit test for this
 	// one, especially since there is no multithreading and
 	// the instruction treats it as an atomic operation
 	if !vm.ValueStack.Drop(2, true) {
-		return NewStackCleanupErrorAndSetTrapReason(vm, "SUB_I32")
+		return NewStackCleanupErrorAndSetTrap(vm, "SUB_I32")
 	}
 	accumulator, _ := bits.Sub32(collect[0].Value_I32, collect[1].Value_I32, 0)
 	vm.ValueStack.PushInt32(accumulator)
@@ -66,14 +72,14 @@ func SUB_I32(vm *VMState) error {
 func MUL_I32(vm *VMState) error {
 	enough, collect := vm.ValueStack.HasAtLeastOfType(2, TYPE_I32)
 	if !enough {
-		return NewStackUnderflowErrorAndSetTrapReason(vm, "MUL_I32")
+		return NewStackUnderflowErrorAndSetTrap(vm, "MUL_I32")
 	}
 
 	// I'm not even sure how I can write an unit test for this
 	// one, especially since there is no multithreading and
 	// the instruction treats it as an atomic operation
 	if !vm.ValueStack.Drop(2, true) {
-		return NewStackCleanupErrorAndSetTrapReason(vm, "MUL_I32")
+		return NewStackCleanupErrorAndSetTrap(vm, "MUL_I32")
 	}
 
 	// While add and sub has sum/diff followed by carry/borrow
@@ -88,14 +94,14 @@ func MUL_I32(vm *VMState) error {
 func DIVS_I32(vm *VMState) error {
 	enough, collect := vm.ValueStack.HasAtLeastOfType(2, TYPE_I32)
 	if !enough {
-		return NewStackUnderflowErrorAndSetTrapReason(vm, "DIVS_I32")
+		return NewStackUnderflowErrorAndSetTrap(vm, "DIVS_I32")
 	}
 
 	// I'm not even sure how I can write an unit test for this
 	// one, especially since there is no multithreading and
 	// the instruction treats it as an atomic operation
 	if !vm.ValueStack.Drop(2, true) {
-		return NewStackCleanupErrorAndSetTrapReason(vm, "DIVS_I32")
+		return NewStackCleanupErrorAndSetTrap(vm, "DIVS_I32")
 	}
 
 	// Cheap cast for getting signed version
@@ -105,9 +111,12 @@ func DIVS_I32(vm *VMState) error {
 	sdivisor := int32(collect[1].Value_I32)
 
 	if sdivisor == 0 {
-		vm.Trap = true
-		vm.TrapReason = "DIVS_I32: Divide by Zero"
-		return errors.New(vm.TrapReason)
+		return vm.SetTrapError(&TrapError{
+			Type:    TrapDivideByZero,
+			Op:      "DIVS_I32",
+			PC:      vm.PC,
+			Message: "DIVS_I32: Divide by Zero",
+		})
 	}
 
 	// Referencing https://webassembly.github.io/spec/core/exec/numerics.html#op-idiv-s
@@ -116,9 +125,12 @@ func DIVS_I32(vm *VMState) error {
 	// For now, I'll trap like Divide by Zero
 
 	if sdividend == math.MinInt32 && sdivisor == -1 { // This should be overflow
-		vm.Trap = true
-		vm.TrapReason = "DIVS_I32: Signed Division Overflow"
-		return errors.New(vm.TrapReason)
+		return vm.SetTrapError(&TrapError{
+			Type:    TrapSignedDivisionOverflow,
+			Op:      "DIVS_I32",
+			PC:      vm.PC,
+			Message: "DIVS_I32: Signed Division Overflow",
+		})
 	}
 
 	// I took a gander at Knunth vol 2, p 276. It looks like since 2's compliment
@@ -145,23 +157,26 @@ func DIVS_I32(vm *VMState) error {
 func DIVU_I32(vm *VMState) error {
 	enough, collect := vm.ValueStack.HasAtLeastOfType(2, TYPE_I32)
 	if !enough {
-		return NewStackUnderflowErrorAndSetTrapReason(vm, "DIVU_I32")
+		return NewStackUnderflowErrorAndSetTrap(vm, "DIVU_I32")
 	}
 
 	// I'm not even sure how I can write an unit test for this
 	// one, especially since there is no multithreading and
 	// the instruction treats it as an atomic operation
 	if !vm.ValueStack.Drop(2, true) {
-		return NewStackCleanupErrorAndSetTrapReason(vm, "DIVU_I32")
+		return NewStackCleanupErrorAndSetTrap(vm, "DIVU_I32")
 	}
 
 	dividend := collect[0].Value_I32
 	divisor := collect[1].Value_I32
 
 	if divisor == 0 {
-		vm.Trap = true
-		vm.TrapReason = "DIVU_I32: Divide by Zero"
-		return errors.New(vm.TrapReason)
+		return vm.SetTrapError(&TrapError{
+			Type:    TrapDivideByZero,
+			Op:      "DIVU_I32",
+			PC:      vm.PC,
+			Message: "DIVU_I32: Divide by Zero",
+		})
 	}
 
 	accumulator, _ := bits.Div32(uint32(0), dividend, divisor)

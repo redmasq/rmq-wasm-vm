@@ -302,11 +302,19 @@ func TestVMState_ExecuteNext_Trap(t *testing.T) {
 	}
 	vm, err := wasmvm.NewVM(cfg)
 	require.NoError(t, err)
-	vm.Trap = true
-	vm.TrapReason = "Simulated trap"
+	vm.SetTrapError(&wasmvm.TrapError{
+		Type:    wasmvm.TrapInternalError,
+		Op:      "TEST",
+		Message: "Simulated trap",
+	})
 	err = vm.Step()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "Simulated trap")
+	assert.NotNil(t, vm.TrapErr)
+	if vm.TrapErr != nil {
+		assert.Equal(t, wasmvm.TrapInternalError, vm.TrapErr.Type)
+		assert.Equal(t, "TEST", vm.TrapErr.Op)
+	}
 }
 
 func TestVMState_ExecuteNext_UnknownOpcode(t *testing.T) {
@@ -320,6 +328,11 @@ func TestVMState_ExecuteNext_UnknownOpcode(t *testing.T) {
 	err = vm.Step()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "Unknown instruction")
+	assert.NotNil(t, vm.TrapErr)
+	if vm.TrapErr != nil {
+		assert.Equal(t, wasmvm.TrapUnknownInstruction, vm.TrapErr.Type)
+		assert.Equal(t, "STEP", vm.TrapErr.Op)
+	}
 }
 
 func TestVMState_ExecuteNext_ProgramCounterOutOfBounds(t *testing.T) {
@@ -332,6 +345,11 @@ func TestVMState_ExecuteNext_ProgramCounterOutOfBounds(t *testing.T) {
 	err = vm.Step()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "Program counter out of bounds")
+	assert.NotNil(t, vm.TrapErr)
+	if vm.TrapErr != nil {
+		assert.Equal(t, wasmvm.TrapProgramCounterOutOfBounds, vm.TrapErr.Type)
+		assert.Equal(t, "STEP", vm.TrapErr.Op)
+	}
 }
 
 func TestVMState_MainLoop_ErrorOutput(t *testing.T) {
