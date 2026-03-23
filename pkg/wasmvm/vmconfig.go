@@ -100,13 +100,12 @@ type RingConfig struct {
 // thus we have a different struct
 type VMConfig struct {
 	Size uint64 // Memory size in bytes
-	// TODO [RWV-18]: After some consideration, this needs to be replaced
-	// There seems to be support for multiple memory ranges
-	// So I'm going to design a memory compositor
-	// This will come in handy for the Ring model anyways
-	// Since I could add the rwx asserts there
-	// Also, it technically needs to be a pointer to []byte
-	// Anyways for future host functions
+	// TODO [RWV-18]: Replace this with a FlatMemory compositor that accepts
+	// logical address, access purpose, and ring execution context, while
+	// preserving the current direct flat-memory behavior for now. The first
+	// implementation should operate on 4 KiB shards and only use the logical
+	// address; ring-aware mapping, shared-memory semantics, and RWX policy
+	// enforcement are deferred to later backlog items.
 	FlatMemory    []byte // Optional: existing memory
 	Strict        bool
 	Image         *ImageConfig
