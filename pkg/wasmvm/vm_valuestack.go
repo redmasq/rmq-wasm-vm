@@ -1,9 +1,6 @@
 package wasmvm
 
-import (
-	"errors"
-	"fmt"
-)
+import "fmt"
 
 //go:generate stringer -type=ValueStackEntryType
 type ValueStackEntryType int8
@@ -112,16 +109,28 @@ func (vs *ValueStack) Pop() (*ValueStackEntry, bool) {
 
 type ErrorGenerator func(*VMState, string) error
 
-func NewStackUnderflowErrorAndSetTrapReason(vm *VMState, opName string) error {
+func NewStackUnderflowErrorAndSetTrap(vm *VMState, opName string) error {
 	trapMessage := fmt.Sprintf("%s: Stack Underflow", opName)
-	vm.Trap = true
-	vm.TrapReason = trapMessage
-	return errors.New(trapMessage)
+	return vm.SetTrapError(&TrapError{
+		Type:    TrapStackUnderflow,
+		Op:      opName,
+		PC:      vm.PC,
+		Message: trapMessage,
+		Meta: map[string]any{
+			"stack_size": vm.ValueStack.Size(),
+		},
+	})
 }
 
-func NewStackCleanupErrorAndSetTrapReason(vm *VMState, opName string) error {
+func NewStackCleanupErrorAndSetTrap(vm *VMState, opName string) error {
 	trapMessage := fmt.Sprintf("%s: Stack Cleanup Error", opName)
-	vm.Trap = true
-	vm.TrapReason = trapMessage
-	return errors.New(trapMessage)
+	return vm.SetTrapError(&TrapError{
+		Type:    TrapStackCleanup,
+		Op:      opName,
+		PC:      vm.PC,
+		Message: trapMessage,
+		Meta: map[string]any{
+			"stack_size": vm.ValueStack.Size(),
+		},
+	})
 }

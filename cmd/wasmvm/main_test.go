@@ -51,6 +51,45 @@ func TestSetupAndRunVM(t *testing.T) {
 				wasmvm.OP_END,
 			},
 		},
+		{
+			Id:    2,
+			Title: "NOP, 9 - 4 = 5, NOP",
+			Want:  uint64(5),
+			WantT: wasmvm.TYPE_I64,
+			Program: []byte{
+				wasmvm.OP_NOP,
+				wasmvm.OP_CONST_I64, 9, 0, 0, 0, 0, 0, 0, 0,
+				wasmvm.OP_CONST_I64, 4, 0, 0, 0, 0, 0, 0, 0,
+				wasmvm.OP_SUB_I64,
+				wasmvm.OP_END,
+			},
+		},
+		{
+			Id:    3,
+			Title: "NOP, 1 - 2 = -1, NOP (i32)",
+			Want:  ^uint32(0),
+			WantT: wasmvm.TYPE_I32,
+			Program: []byte{
+				wasmvm.OP_NOP,
+				wasmvm.OP_CONST_I32, 1, 0, 0, 0,
+				wasmvm.OP_CONST_I32, 2, 0, 0, 0,
+				wasmvm.OP_SUB_I32,
+				wasmvm.OP_END,
+			},
+		},
+		{
+			Id:    4,
+			Title: "NOP, 1 - 2 = -1, NOP (i64)",
+			Want:  ^uint64(0),
+			WantT: wasmvm.TYPE_I64,
+			Program: []byte{
+				wasmvm.OP_NOP,
+				wasmvm.OP_CONST_I64, 1, 0, 0, 0, 0, 0, 0, 0,
+				wasmvm.OP_CONST_I64, 2, 0, 0, 0, 0, 0, 0, 0,
+				wasmvm.OP_SUB_I64,
+				wasmvm.OP_END,
+			},
+		},
 	}
 
 	for _, tc := range tests {
