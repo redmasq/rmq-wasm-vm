@@ -17,7 +17,6 @@ done were omitted.
 - Status: In Progress
 - Child tasks:
 - RWV-21 - Implement `i32.rem_s` opcode
-- RWV-22 - Implement `i32.rem_u` opcode
 - RWV-23 - Implement `i64.rem_s` opcode
 - RWV-24 - Implement `i64.rem_u` opcode
 
@@ -35,6 +34,7 @@ done were omitted.
 - Child tasks:
 - RWV-18 - Replace `VMConfig.FlatMemory` with a Memory Compositor (`ON HOLD`)
 - RWV-20 - Improve pull request validation performance in GitHub Actions
+- RWV-56 - Replace `InstructionMap` with opcode dispatch table and add invalid/not-implemented handlers
 
 ### RWV-25 - Implement integer bitwise opcodes for i32 and i64
 

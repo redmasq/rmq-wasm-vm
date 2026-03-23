@@ -430,6 +430,128 @@ func TestDIVU_I32(t *testing.T) {
 	runTestBatchI32(t, tests)
 }
 
+// Table tests for rem_u.i32
+func TestREMU_I32(t *testing.T) {
+	np := "REMU_I32: "
+	tests := []i32TestCase{
+		{
+			name:        np + "Divide By Zero",
+			stackValues: []uint32{1, 0},
+			memoryContent: []byte{
+				wasmvm.OP_REMU_I32,
+			},
+			expectTrap:    true,
+			trapReason:    np + "Divide by Zero",
+			trapType:      wasmvm.TrapDivideByZero,
+			trapOp:        "REMU_I32",
+			expectPC:      0,
+			expectedStack: 0,
+		},
+		{
+			name:        np + "Small Values - Exact",
+			stackValues: []uint32{10, 5},
+			memoryContent: []byte{
+				wasmvm.OP_REMU_I32,
+			},
+			expectTrap:    false,
+			expectValue:   []uint32{0},
+			expectPC:      1,
+			expectedStack: 1,
+		},
+		{
+			name:        np + "Small Values - Non-Exact",
+			stackValues: []uint32{11, 5},
+			memoryContent: []byte{
+				wasmvm.OP_REMU_I32,
+			},
+			expectTrap:    false,
+			expectValue:   []uint32{1},
+			expectPC:      1,
+			expectedStack: 1,
+		},
+		{
+			name:        np + "Stack Underflow",
+			stackValues: []uint32{uint32(1)},
+			memoryContent: []byte{
+				wasmvm.OP_REMU_I32,
+			},
+			expectTrap:    true,
+			trapReason:    np + "Stack Underflow",
+			trapType:      wasmvm.TrapStackUnderflow,
+			trapOp:        "REMU_I32",
+			expectPC:      1,
+			expectedStack: 1,
+		},
+		{
+			name:        np + "One by One",
+			stackValues: []uint32{1, 1},
+			memoryContent: []byte{
+				wasmvm.OP_REMU_I32,
+			},
+			expectTrap:    false,
+			expectValue:   []uint32{0},
+			expectPC:      1,
+			expectedStack: 1,
+		},
+		{
+			name:        np + "Max value by itself",
+			stackValues: []uint32{^uint32(0), ^uint32(0)},
+			memoryContent: []byte{
+				wasmvm.OP_REMU_I32,
+			},
+			expectTrap:    false,
+			expectValue:   []uint32{0},
+			expectPC:      1,
+			expectedStack: 1,
+		},
+		{
+			name:        np + "Large by One",
+			stackValues: []uint32{uint32(math.MaxInt32), 1},
+			memoryContent: []byte{
+				wasmvm.OP_REMU_I32,
+			},
+			expectTrap:    false,
+			expectValue:   []uint32{0},
+			expectPC:      1,
+			expectedStack: 1,
+		},
+		{
+			name:        np + "Large by Large - Remainder 0",
+			stackValues: []uint32{uint32(math.MaxInt32), uint32(math.MaxInt32)},
+			memoryContent: []byte{
+				wasmvm.OP_REMU_I32,
+			},
+			expectTrap:    false,
+			expectValue:   []uint32{0},
+			expectPC:      1,
+			expectedStack: 1,
+		},
+		{
+			name:        np + "Zero Dividend",
+			stackValues: []uint32{uint32(0), uint32(42)},
+			memoryContent: []byte{
+				wasmvm.OP_REMU_I32,
+			},
+			expectTrap:    false,
+			expectValue:   []uint32{uint32(0)},
+			expectPC:      1,
+			expectedStack: 1,
+		},
+		{
+			name:        np + "Dividend Smaller than Divisor",
+			stackValues: []uint32{uint32(41), uint32(42)},
+			memoryContent: []byte{
+				wasmvm.OP_REMU_I32,
+			},
+			expectTrap:    false,
+			expectValue:   []uint32{uint32(41)},
+			expectPC:      1,
+			expectedStack: 1,
+		},
+	}
+	runTestBatchI32(t, tests)
+}
+
 // Table tests for div_s.i32
 func TestDIVS_I32(t *testing.T) {
 	np := "DIVS_I32: "

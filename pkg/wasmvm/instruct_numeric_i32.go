@@ -184,3 +184,35 @@ func DIVU_I32(vm *VMState) error {
 	vm.PC += 1
 	return nil
 }
+
+// 0x70 rem_u.i32: Pull two I32 words off stack, push I32 remainder word on stack (unsigned)
+func REMU_I32(vm *VMState) error {
+	enough, collect := vm.ValueStack.HasAtLeastOfType(2, TYPE_I32)
+	if !enough {
+		return NewStackUnderflowErrorAndSetTrap(vm, "REMU_I32")
+	}
+
+	// I'm not even sure how I can write an unit test for this
+	// one, especially since there is no multithreading and
+	// the instruction treats it as an atomic operation
+	if !vm.ValueStack.Drop(2, true) {
+		return NewStackCleanupErrorAndSetTrap(vm, "REMU_I32")
+	}
+
+	dividend := collect[0].Value_I32
+	divisor := collect[1].Value_I32
+
+	if divisor == 0 {
+		return vm.SetTrapError(&TrapError{
+			Type:    TrapDivideByZero,
+			Op:      "REMU_I32",
+			PC:      vm.PC,
+			Message: "REMU_I32: Divide by Zero",
+		})
+	}
+
+	_, accumulator := bits.Div32(uint32(0), dividend, divisor)
+	vm.ValueStack.PushInt32(accumulator)
+	vm.PC += 1
+	return nil
+}
