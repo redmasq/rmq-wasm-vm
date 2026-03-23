@@ -430,9 +430,6 @@ func TestDIVU_I64(t *testing.T) {
 	runTestBatchI64(t, tests)
 }
 
-/*
-// This was copied over and modified from i32 tests.
-// Once verified, it will be useable for testing div_s.i64
 // Table tests for div_s.i64
 func TestDIVS_I64(t *testing.T) {
 	np := "DIVS_I64: "
@@ -445,6 +442,8 @@ func TestDIVS_I64(t *testing.T) {
 			},
 			expectTrap:    true,
 			trapReason:    np + "Divide by Zero",
+			trapType:      wasmvm.TrapDivideByZero,
+			trapOp:        "DIVS_I64",
 			expectPC:      0,
 			expectedStack: 0,
 		},
@@ -478,6 +477,8 @@ func TestDIVS_I64(t *testing.T) {
 			},
 			expectTrap:    true,
 			trapReason:    np + "Signed Division Overflow",
+			trapType:      wasmvm.TrapSignedDivisionOverflow,
+			trapOp:        "DIVS_I64",
 			expectPC:      0,
 			expectedStack: 0,
 		},
@@ -489,6 +490,8 @@ func TestDIVS_I64(t *testing.T) {
 			},
 			expectTrap:    true,
 			trapReason:    np + "Stack Underflow",
+			trapType:      wasmvm.TrapStackUnderflow,
+			trapOp:        "DIVS_I64",
 			expectPC:      1,
 			expectedStack: 1,
 		},
@@ -594,4 +597,3 @@ func TestDIVS_I64(t *testing.T) {
 	}
 	runTestBatchI64(t, tests)
 }
-*/

@@ -6,9 +6,8 @@ better kept out of the source code.
 Jira remains the source of truth for issue scope and status. When a note here
 maps to a Jira item, prefer referencing the ticket key.
 
-This snapshot was populated from a Jira RSS export provided on 2026-03-23.
-Issues already marked done were omitted. No canceled issues appeared in that
-export.
+This snapshot was synchronized from Jira on 2026-03-23.
+Issues marked done are intentionally omitted.
 
 ## Open Jira Snapshot
 
@@ -48,17 +47,6 @@ export.
 - MMU-like assignment per execution context via ring templates defined in ring
   0.
 
-### RWV-17 - Retrofit Trap handling to use advanced error types with description and enumeration
-
-- Type: Task
-- Status: In Progress
-- Priority: Medium
-- Parent: RWV-15
-- Labels: onhold, optimize
-- Created: 2025-07-19
-- Updated: 2025-11-28
-- Description: None
-
 ### RWV-16 - Adjust types for VMState and VMConfig elements so that they use specific typedefs where appropriate
 
 - Type: Task
@@ -90,17 +78,6 @@ export.
 - Labels: opcodes
 - Created: 2025-07-16
 - Updated: 2025-07-16
-- Description: None
-
-### RWV-3 - Handler and Unit Tests for div_s.i64
-
-- Type: Task
-- Status: To Do
-- Priority: Medium
-- Parent: RWV-5
-- Labels: opcodes, unittests
-- Created: 2025-07-16
-- Updated: 2025-07-20
 - Description: None
 
 ## Deferred / Backlog Notes
